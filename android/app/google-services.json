@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "902851793414",
+    "project_id": "thewizard-3f008",
+    "storage_bucket": "thewizard-3f008.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:902851793414:android:2d522fbd3dcd9475e22987",
+        "android_client_info": {
+          "package_name": "com.example.reloc"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC-HyKJwqLG9gBNoorUf5VSh3mT3CYIa6c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
