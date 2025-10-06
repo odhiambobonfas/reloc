@@ -25,7 +25,7 @@ class MoverCard extends StatelessWidget {
           radius: 25,
           backgroundImage: photoUrl != null
               ? NetworkImage(photoUrl!)
-              : AssetImage('assets/images/default_avatar.png') as ImageProvider,
+              : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
         ),
         title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('Area: $serviceArea\nRate: \$$rate/hr'),

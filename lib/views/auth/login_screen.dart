@@ -5,8 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
 import '../../widgets/common/custom_button.dart';
 import '../../widgets/common/loading_indicator.dart';
-import '../home/home_screen.dart';
-import 'auth_screen.dart';
+import '../../routes/app_routes.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -36,35 +35,25 @@ class _LoginScreenState extends State<LoginScreen> {
       final uid = credential.user!.uid;
       final firestore = FirebaseFirestore.instance;
 
-      DocumentSnapshot? userDoc;
+      final userDoc = await firestore.collection('users').doc(uid).get();
 
-      // Check role collections
-      final residentDoc = await firestore.collection('residents').doc(uid).get();
-      final moverDoc = await firestore.collection('movers').doc(uid).get();
-      final generalDoc = await firestore.collection('users').doc(uid).get();
-
-      if (residentDoc.exists) {
-        userDoc = residentDoc;
-        print("✅ Found resident");
-      } else if (moverDoc.exists) {
-        userDoc = moverDoc;
-        print("✅ Found mover");
-      } else if (generalDoc.exists) {
-        userDoc = generalDoc;
-        print("✅ Found general user");
-      }
-
-      if (userDoc != null && userDoc.exists) {
+      if (userDoc.exists) {
         setState(() => _isLoading = false);
 
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+        // Get user role
+        final userData = userDoc.data() as Map<String, dynamic>;
+        final role = userData['role'] ?? 'user';
+
+        // Navigate (all roles land on the same main home screen)
+        // Role differences will only be reflected later (e.g., in Profile)
+        Navigator.pushReplacementNamed(context, AppRoutes.residentHome);
+
       } else {
+        // If user is authenticated but no document is found, sign out and show an error
         setState(() => _isLoading = false);
+        await FirebaseAuth.instance.signOut();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("User not found in Firestore.")),
+          const SnackBar(content: Text("User data not found. Please register again.")),
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -72,6 +61,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Login failed: ${e.message}")),
       );
+      print(e.code);
     } catch (e) {
       setState(() => _isLoading = false);
       print("Unexpected error: $e");
@@ -172,6 +162,15 @@ class _LoginScreenState extends State<LoginScreen> {
                               text: 'Login',
                               onPressed: () => _login(context),
                             ),
+                      const SizedBox(height: 16),
+
+                      // Forgot Password
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pushNamed(context, AppRoutes.forgotPassword);
+                        },
+                        child: const Text('Forgot Password?', style: TextStyle(color: Colors.lightBlueAccent)),
+                      ),
                     ],
                   ),
                 ),
@@ -184,10 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Text("Don’t have an account?", style: TextStyle(color: Colors.white70)),
                     TextButton(
                       onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const AuthScreen()),
-                        );
+                        Navigator.pushNamed(context, AppRoutes.auth);
                       },
                       child: const Text('Register', style: TextStyle(color: Colors.lightBlueAccent)),
                     ),

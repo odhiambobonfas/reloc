@@ -1,30 +1,95 @@
-const pool = require('../db/index');
+const Post = require('../models/Post.model');
 
 exports.createPost = async (req, res) => {
-  const { content, type, user_id, is_video } = req.body;
-  const mediaUrl = req.file ? `/uploads/${req.file.filename}` : null;
-
   try {
-    const newPost = await pool.query(
-      `INSERT INTO community_posts (content, type, user_id, media_url, is_video)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [content, type, user_id, mediaUrl, is_video === 'true']
-    );
-    res.status(200).json(newPost.rows[0]);
-  } catch (err) {
-    console.error("Error creating post:", err.message);
-    res.status(500).json({ error: err.message });
+    console.log('📝 Creating post with data:', {
+      body: req.body,
+      file: req.file ? req.file.filename : 'No file',
+      headers: req.headers
+    });
+
+    const { user_id, content, type } = req.body;
+    
+    // Validate required fields
+    if (!user_id) {
+      console.error('❌ Missing user_id');
+      return res.status(400).json({ error: "user_id is required" });
+    }
+    
+    if (!content && !req.file) {
+      console.error('❌ Missing content and media');
+      return res.status(400).json({ error: "Content or media is required" });
+    }
+
+    if (!type) {
+      console.error('❌ Missing type');
+      return res.status(400).json({ error: "Post type is required" });
+    }
+
+    let media_url = null;
+
+    if (req.file) {
+      media_url = `/uploads/${req.file.filename}`;
+      console.log('📁 Media file uploaded:', media_url);
+    }
+
+    console.log('💾 Saving post to database:', {
+      user_id,
+      content: content || '',
+      type,
+      media_url
+    });
+
+    const post = await Post.create({
+      user_id,
+      content: content || '',
+      type,
+      media_url,
+    });
+
+    console.log('✅ Post created successfully:', post);
+
+    res.status(201).json({ 
+      success: true, 
+      post,
+      message: 'Post created successfully'
+    });
+  } catch (error) {
+    console.error("❌ Error creating post:", error);
+    console.error("❌ Error stack:", error.stack);
+    
+    // Send more detailed error information in development
+    const errorMessage = process.env.NODE_ENV === 'development' 
+      ? error.message 
+      : 'Server error occurred while creating post';
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
 exports.getPosts = async (req, res) => {
   try {
-    const posts = await pool.query(
-      'SELECT * FROM community_posts ORDER BY timestamp DESC'
-    );
-    res.status(200).json(posts.rows);
-  } catch (err) {
-    console.error("Error fetching posts:", err.message);
-    res.status(500).json({ error: err.message });
+    console.log('📖 Fetching posts with query:', req.query);
+    
+    const { limit, offset, type } = req.query;
+    const posts = await Post.findAll(limit, offset, type);
+
+    console.log(`✅ Fetched ${posts.length} posts`);
+    res.json(posts);
+  } catch (error) {
+    console.error("❌ Error fetching posts:", error);
+    console.error("❌ Error stack:", error.stack);
+    
+    const errorMessage = process.env.NODE_ENV === 'development' 
+      ? error.message 
+      : 'Server error occurred while fetching posts';
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };

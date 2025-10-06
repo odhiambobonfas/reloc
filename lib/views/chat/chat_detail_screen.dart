@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:reloc/services/message_service.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String chatId;
@@ -23,41 +23,29 @@ class ChatDetailScreen extends StatefulWidget {
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final TextEditingController _messageController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   late String currentUserId;
+  late Future<List<Map<String, dynamic>>> _messagesFuture;
 
   @override
   void initState() {
     super.initState();
     currentUserId = _auth.currentUser!.uid;
+    _messagesFuture = MessageService.fetchMessages(widget.chatId);
   }
 
   void _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
-    final messageRef = _firestore
-        .collection('chats')
-        .doc(widget.chatId)
-        .collection('messages')
-        .doc();
-
-    await messageRef.set({
-      'id': messageRef.id,
-      'text': text,
-      'senderId': currentUserId,
-      'receiverId': widget.peerId,
-      'timestamp': FieldValue.serverTimestamp(),
-      'seen': false,
-    });
-
-    await _firestore.collection('chats').doc(widget.chatId).set({
-      'lastMessage': text,
-      'lastSenderId': currentUserId,
-      'lastTimestamp': FieldValue.serverTimestamp(),
-      'participants': [currentUserId, widget.peerId],
-    }, SetOptions(merge: true));
+    final ok = await MessageService.sendMessage(
+      chatId: widget.chatId,
+      content: text,
+      receiverId: widget.peerId,
+    );
+    if (ok) {
+      setState(() => _messagesFuture = MessageService.fetchMessages(widget.chatId));
+    }
 
     _messageController.clear();
   }
@@ -80,7 +68,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
         ),
         child: Text(
-          message['text'],
+          message['content'] ?? message['text'] ?? '',
           style: TextStyle(color: isMe ? Colors.white : Colors.black87),
         ),
       ),
@@ -109,26 +97,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       body: Column(
         children: [
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _firestore
-                  .collection('chats')
-                  .doc(widget.chatId)
-                  .collection('messages')
-                  .orderBy('timestamp', descending: true)
-                  .snapshots(),
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _messagesFuture,
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
-                final messages = snapshot.data!.docs;
-
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+                final messages = snapshot.data ?? [];
+                if (messages.isEmpty) {
+                  return const Center(child: Text('No messages'));
+                }
                 return ListView.builder(
                   reverse: true,
                   padding: const EdgeInsets.all(16),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
-                    final message = messages[index].data() as Map<String, dynamic>;
+                    final message = messages[index];
                     return _buildMessageBubble(message);
                   },
                 );

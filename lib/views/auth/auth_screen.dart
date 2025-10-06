@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:reloc/views/auth/registration_screen.dart';
 import 'package:reloc/views/auth/login_screen.dart';
 
@@ -13,14 +14,30 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _waveController;
+  bool _hasError = false;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _waveController = AnimationController(
-      duration: const Duration(seconds: 4),
-      vsync: this,
-    )..repeat();
+    try {
+      _waveController = AnimationController(
+        duration: const Duration(seconds: 4),
+        vsync: this,
+      )..repeat();
+    } catch (e) {
+      setState(() {
+        _hasError = true;
+        _errorMessage = 'Animation error: $e';
+      });
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        Navigator.pushReplacementNamed(context, '/mover/home');
+      }
+    });
   }
 
   @override
@@ -31,6 +48,58 @@ class _AuthScreenState extends State<AuthScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Show error fallback if there's an issue
+    if (_hasError) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Something went wrong',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _errorMessage ?? 'Unknown error',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _hasError = false;
+                    _errorMessage = null;
+                  });
+                  // Reinitialize
+                  _waveController = AnimationController(
+                    duration: const Duration(seconds: 4),
+                    vsync: this,
+                  )..repeat();
+                },
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       extendBody: true,
@@ -72,6 +141,13 @@ class _AuthScreenState extends State<AuthScreen>
                       child: Image.asset(
                         'assets/Appicons/logo.png',
                         fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.home,
+                            size: 50,
+                            color: Colors.blue,
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -143,7 +219,7 @@ class WavePainter extends CustomPainter {
     final paint = Paint()..color = Colors.blue.withOpacity(0.2);
 
     final path = Path();
-    final waveHeight = 20;
+    const waveHeight = 20;
     final speed = animationValue * 2 * pi;
     final yOffset = size.height;
 

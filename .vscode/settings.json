@@ -1,4 +1,5 @@
 {
     "java.configuration.updateBuildConfiguration": "interactive",
-    "cmake.sourceDirectory": "/home/wizarddev/Othina/reloc/linux"
+    "cmake.sourceDirectory": "/home/wizarddev/Othina/reloc/linux",
+    "CodeGPT.apiKey": "DeepSeek"
 }

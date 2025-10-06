@@ -3,13 +3,23 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/constants/app_colors.dart';
+import 'package:reloc/views/shared/message_screen.dart'; // 👈 import your message screen
 
 class MoversScreen extends StatelessWidget {
   const MoversScreen({super.key});
 
+  // ✅ Fetch all users where role == "mover"
   Future<List<Map<String, dynamic>>> _fetchMovers() async {
-    final snapshot = await FirebaseFirestore.instance.collection('movers').get();
-    return snapshot.docs.map((doc) => doc.data()).toList();
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'mover')
+        .get();
+
+    return snapshot.docs.map((doc) {
+      final data = doc.data();
+      data['id'] = doc.id; // 👈 include document ID for reference
+      return data;
+    }).toList();
   }
 
   @override
@@ -19,7 +29,7 @@ class MoversScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Available Movers'),
+        title: const Text('ReLoC Movers'), // ✅ updated name
         backgroundColor: AppColors.navBar,
         elevation: 0,
       ),
@@ -32,7 +42,10 @@ class MoversScreen extends StatelessWidget {
 
           if (snapshot.hasError) {
             return Center(
-              child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.white)),
+              child: Text(
+                'Error: ${snapshot.error}',
+                style: const TextStyle(color: Colors.white),
+              ),
             );
           }
 
@@ -65,16 +78,28 @@ class MoversScreen extends StatelessWidget {
                     backgroundImage: NetworkImage(photoUrl),
                     radius: 25,
                   ),
-                  title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  title: Text(
+                    name,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
                   subtitle: Text(email, style: const TextStyle(color: Colors.white70)),
                   trailing: IconButton(
-                    icon: const Icon(Icons.message, color: AppColors.accent),
+                    icon: const Icon(Icons.message, color: AppColors.primary),
                     onPressed: () {
-                      // TODO: Navigate to chat or profile
+                      // ✅ Navigate to MessageScreen and pass mover details
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MessageScreen(
+                            receiverId: mover['id'], // mover's user id
+                            receiverName: name,
+                          ),
+                        ),
+                      );
                     },
                   ),
                   onTap: () {
-                    // TODO: Navigate to mover detail screen if needed
+                    // Optional: Navigate to mover detail screen
                   },
                 ),
               );

@@ -10,6 +10,7 @@ class UserModel {
   final bool isVerified;
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
+  final bool isOnline;
 
   UserModel({
     required this.id,
@@ -21,6 +22,7 @@ class UserModel {
     this.isVerified = false,
     this.createdAt,
     this.updatedAt,
+    this.isOnline = false,
   });
 
   /// Create a UserModel from a Firestore document
@@ -37,6 +39,7 @@ class UserModel {
       isVerified: data['isVerified'] ?? false,
       createdAt: data['createdAt'],
       updatedAt: data['updatedAt'],
+      isOnline: data['isOnline'] ?? false,
     );
   }
 
@@ -51,6 +54,7 @@ class UserModel {
       'isVerified': isVerified,
       'createdAt': createdAt ?? FieldValue.serverTimestamp(),
       'updatedAt': updatedAt ?? FieldValue.serverTimestamp(),
+      'isOnline': isOnline,
     };
   }
 
@@ -65,6 +69,7 @@ class UserModel {
     bool? isVerified,
     Timestamp? createdAt,
     Timestamp? updatedAt,
+    bool? isOnline,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -76,6 +81,7 @@ class UserModel {
       isVerified: isVerified ?? this.isVerified,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isOnline: isOnline ?? this.isOnline,
     );
   }
 }

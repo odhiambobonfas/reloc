@@ -1,14 +1,11 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import '../../core/constants/app_colors.dart';
-
-const String apiBaseUrl = "http://192.168.100.76:5000/api"; // ✅ Node.js API
 
 class PostAsScreen extends StatefulWidget {
   const PostAsScreen({super.key});
@@ -40,25 +37,28 @@ class _PostAsScreenState extends State<PostAsScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final doc =
-            await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
 
-        setState(() {
-          if (doc.exists) {
-            _authorName = doc.data()?['fullName'] ??
-                user.displayName ??
-                user.email ??
-                "Anonymous";
-          } else {
-            _authorName = user.displayName ?? user.email ?? "Anonymous";
-          }
-        });
+        if (mounted) {
+          setState(() {
+            if (doc.exists) {
+              _authorName = doc.data()?['fullName'] ??
+                  user.displayName ??
+                  user.email ??
+                  "Anonymous";
+            } else {
+              _authorName = user.displayName ?? user.email ?? "Anonymous";
+            }
+          });
+        }
       }
     } catch (e) {
-      setState(() => _authorName = "Anonymous");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('⚠️ Could not fetch user name: $e')),
-      );
+      if (mounted) {
+        setState(() => _authorName = "Anonymous");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('⚠️ Could not fetch user name: $e')),
+        );
+      }
     }
   }
 
@@ -94,53 +94,120 @@ class _PostAsScreenState extends State<PostAsScreen> {
         if (_isVideo) {
           _videoController = VideoPlayerController.file(_mediaFile!)
             ..initialize().then((_) {
-              setState(() {});
+              if (mounted) {
+                setState(() {});
+              }
             });
         }
       });
     }
   }
 
-  /// ✅ Submit Post to Node.js API (PostgreSQL + Uploads)
+  /// ✅ Submit Post to your backend API
   Future<void> _submitPost() async {
     final content = _controller.text.trim();
     if ((content.isEmpty && _mediaFile == null) || _authorName == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please add text or media, and ensure you are logged in')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please add text or media, and ensure you are logged in')),
+        );
+      }
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      var request = http.MultipartRequest('POST', Uri.parse('$apiBaseUrl/posts'));
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      debugPrint('🚀 Submitting post with data:');
+      debugPrint('  - Content: ${content.isEmpty ? "No content" : content}');
+      debugPrint('  - User ID: ${user.uid}');
+      debugPrint('  - Type: $_selectedPostType');
+      debugPrint('  - Media: ${_mediaFile != null ? _mediaFile!.path : "No media"}');
+
+      var uri = Uri.parse("http://192.168.20.58:5000/api/posts");
+      var request = http.MultipartRequest("POST", uri);
+
+      // ✅ Add text fields
       request.fields['content'] = content;
-      request.fields['author'] = _authorName!; // ✅ Real logged-in user name
-      request.fields['is_video'] = _isVideo.toString();
+      request.fields['user_id'] = user.uid;
       request.fields['type'] = _selectedPostType;
 
+      debugPrint('📤 Request fields: ${request.fields}');
+
+      // ✅ Add media file if any
       if (_mediaFile != null) {
-        request.files.add(await http.MultipartFile.fromPath('media', _mediaFile!.path));
+        debugPrint('📁 Adding media file: ${_mediaFile!.path}');
+        request.files.add(
+          await http.MultipartFile.fromPath('media', _mediaFile!.path),
+        );
+        debugPrint('✅ Media file added to request');
       }
 
-      final response = await request.send();
-      if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Post created successfully!')),
-        );
-        Navigator.pop(context);
+      debugPrint('🌐 Sending request to: $uri');
+      var response = await request.send();
+      debugPrint('📥 Response status: ${response.statusCode}');
+
+      final responseBody = await response.stream.bytesToString();
+      debugPrint('📥 Response body: $responseBody');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Post created successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
+        }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Failed to post! Code: ${response.statusCode}')),
-        );
+        debugPrint('❌ Server error: ${response.statusCode}');
+        debugPrint('❌ Response body: $responseBody');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Server error: ${response.statusCode}\n$responseBody'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      debugPrint('❌ Exception occurred: $e');
+      debugPrint('❌ Exception type: ${e.runtimeType}');
+      
+      String errorMessage = 'Unknown error occurred';
+      
+      if (e.toString().contains('SocketException')) {
+        errorMessage = 'Cannot connect to server. Please check your internet connection and try again.';
+      } else if (e.toString().contains('TimeoutException')) {
+        errorMessage = 'Request timed out. Please try again.';
+      } else if (e.toString().contains('FormatException')) {
+        errorMessage = 'Invalid response from server. Please try again.';
+      } else {
+        errorMessage = 'Error: $e';
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -228,13 +295,13 @@ class _PostAsScreenState extends State<PostAsScreen> {
               icon: const Icon(Icons.add_photo_alternate),
               label: const Text("Add Photo/Video"),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary.withOpacity(0.8),
+                backgroundColor: AppColors.primary.withValues(alpha: 0.8),
                 foregroundColor: Colors.black,
               ),
             ),
             const SizedBox(height: 20),
             _isLoading
-                ? const CircularProgressIndicator()
+                ? const Center(child: CircularProgressIndicator())
                 : ElevatedButton(
                     onPressed: _submitPost,
                     style: ElevatedButton.styleFrom(

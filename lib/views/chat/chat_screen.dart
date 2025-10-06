@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:reloc/core/constants/app_colors.dart';
+import 'package:reloc/services/message_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -19,7 +20,6 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final currentUser = FirebaseAuth.instance.currentUser;
-  final FirebaseFirestore firestore = FirebaseFirestore.instance;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -27,23 +27,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
-    final messageData = {
-      'text': text,
-      'sender': currentUser!.uid,
-      'timestamp': FieldValue.serverTimestamp(),
-    };
-
-    await firestore
-        .collection('chats')
-        .doc(widget.chatId)
-        .collection('messages')
-        .add(messageData);
-
-    await firestore.collection('chats').doc(widget.chatId).set({
-      'users': [currentUser!.uid, widget.chatId.replaceAll(currentUser!.uid, '').replaceAll('_', '')],
-      'lastMessage': text,
-      'timestamp': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    await MessageService.sendMessage(
+      chatId: widget.chatId,
+      content: text,
+      receiverId: widget.chatId.replaceAll(currentUser!.uid, '').replaceAll('_', ''),
+    );
 
     _messageController.clear();
     _scrollToBottom();
@@ -81,7 +69,7 @@ class _ChatScreenState extends State<ChatScreen> {
               isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             Text(
-              message['text'] ?? '',
+              message['content'] ?? message['text'] ?? '',
               style: TextStyle(
                 color: isMe ? Colors.black : Colors.white,
               ),
@@ -102,11 +90,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final messagesRef = firestore
-        .collection('chats')
-        .doc(widget.chatId)
-        .collection('messages')
-        .orderBy('timestamp');
+    final messagesFuture = MessageService.fetchMessages(widget.chatId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -117,28 +101,22 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: messagesRef.snapshots(),
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: messagesFuture,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(
-                    child:
-                        CircularProgressIndicator(color: AppColors.primary),
+                    child: CircularProgressIndicator(color: AppColors.primary),
                   );
                 }
-
-                final messages = snapshot.data!.docs;
-
+                final messages = snapshot.data!;
                 return ListView.builder(
                   controller: _scrollController,
                   itemCount: messages.length,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   itemBuilder: (context, index) {
-                    final message =
-                        messages[index].data() as Map<String, dynamic>;
-                    final isMe = message['sender'] == currentUser!.uid;
-
+                    final message = messages[index];
+                    final isMe = message['sender_id'] == currentUser!.uid;
                     return _buildMessageBubble(message, isMe);
                   },
                 );

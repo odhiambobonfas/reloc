@@ -1,62 +1,45 @@
-const pool = require("../db");
+const Comment = require("../models/commentModel");
 
-// ✅ Get comments (with nested replies)
-exports.getCommentsByPost = async (req, res) => {
-  const { postId } = req.params;
-
+const addComment = async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `WITH RECURSIVE comment_tree AS (
-        SELECT id, post_id, author, text, parent_comment_id, timestamp
-        FROM comments
-        WHERE post_id = $1 AND parent_comment_id IS NULL
-        UNION ALL
-        SELECT c.id, c.post_id, c.author, c.text, c.parent_comment_id, c.timestamp
-        FROM comments c
-        INNER JOIN comment_tree ct ON c.parent_comment_id = ct.id
-      )
-      SELECT * FROM comment_tree ORDER BY timestamp ASC`,
-      [postId]
-    );
+    const { postId } = req.params;
+    const { user_id, content, parent_id } = req.body;
+    if (!postId || !user_id || !content)
+      return res.status(400).json({ error: "Missing fields" });
 
-    // ✅ Group replies into a nested structure
-    const commentMap = {};
-    const nestedComments = [];
-
-    rows.forEach((comment) => {
-      comment.replies = [];
-      commentMap[comment.id] = comment;
-      if (comment.parent_comment_id) {
-        commentMap[comment.parent_comment_id].replies.push(comment);
-      } else {
-        nestedComments.push(comment);
-      }
+    const comment = await Comment.createComment({ 
+      post_id: postId, 
+      user_id, 
+      content, 
+      parent_id: parent_id 
     });
-
-    res.json(nestedComments);
+    res.status(201).json(comment);
   } catch (err) {
-    console.error("❌ Error fetching comments:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to add comment" });
   }
 };
 
-// ✅ Add new comment or reply
-exports.addComment = async (req, res) => {
-  const { postId } = req.params;
-  const { author, text, parent_comment_id } = req.body;
-
-  if (!text || !author) {
-    return res.status(400).json({ error: "Text and author are required" });
-  }
-
+const getComments = async (req, res) => {
   try {
-    await pool.query(
-      "INSERT INTO comments (post_id, author, text, parent_comment_id) VALUES ($1, $2, $3, $4)",
-      [postId, author, text, parent_comment_id || null]
-    );
-    res.json({ message: "✅ Comment added successfully" });
+    const { postId } = req.params;
+    const comments = await Comment.getCommentsByPost(postId);
+    res.json(comments);
   } catch (err) {
-    console.error("❌ Error adding comment:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch comments" });
   }
 };
+
+const removeComment = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await Comment.deleteComment(id);
+        res.status(204).send();
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to delete comment" });
+    }
+};
+
+module.exports = { addComment, getComments, removeComment };

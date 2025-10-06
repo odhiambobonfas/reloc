@@ -1,12 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import '../../models/message_model.dart';
 import 'chat_detail_screen.dart';
+import 'package:reloc/services/message_service.dart';
 
-class ChatListScreen extends StatelessWidget {
+class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
+
+  @override
+  State<ChatListScreen> createState() => _ChatListScreenState();
+}
+
+class _ChatListScreenState extends State<ChatListScreen> {
+  late Future<List<Map<String, dynamic>>> _conversationsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _conversationsFuture = MessageService.fetchConversations();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,12 +30,8 @@ class ChatListScreen extends StatelessWidget {
         centerTitle: true,
         backgroundColor: const Color(0xFF00C853),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('chats')
-            .where('participants', arrayContains: currentUser?.uid)
-            .orderBy('lastUpdated', descending: true)
-            .snapshots(),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _conversationsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -31,76 +39,73 @@ class ChatListScreen extends StatelessWidget {
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          final chats = snapshot.data ?? [];
+          if (chats.isEmpty) {
             return const Center(child: Text('No messages found'));
           }
-
-          final chats = snapshot.data!.docs;
-
-          return ListView.builder(
-            itemCount: chats.length,
-            itemBuilder: (context, index) {
-              final chatData = chats[index].data() as Map<String, dynamic>;
-              final chatId = chats[index].id;
-
-              final otherUserId = (chatData['participants'] as List)
-                  .firstWhere((id) => id != currentUser!.uid);
-
-              // Parse the lastMessage using MessageModel
-              final lastMessageData = chatData['lastMessage'] ?? {};
-              final lastMessage = MessageModel.fromMap(lastMessageData);
-
-              return FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance.collection('users').doc(otherUserId).get(),
-                builder: (context, userSnapshot) {
-                  if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-                    return const ListTile(title: Text("User not found"));
-                  }
-
-                  final user = userSnapshot.data!.data() as Map<String, dynamic>;
-
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundImage: NetworkImage(
-                        user['photoUrl']?.isNotEmpty == true
-                            ? user['photoUrl']
-                            : 'https://ui-avatars.com/api/?name=${user['name']}',
-                      ),
-                    ),
-                    title: Text(user['name'] ?? 'User'),
-                    subtitle: Text(lastMessage.content),
-                    trailing: Text(
-                      _formatTimestamp(lastMessage.timestamp),
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatDetailScreen(
-                            chatId: chatId,
-                            peerId: otherUserId,
-                            peerName: user['name'],
-                            peerPhotoUrl: user['photoUrl'],
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              );
+          return RefreshIndicator(
+            onRefresh: () async {
+              setState(() => _conversationsFuture = MessageService.fetchConversations());
+              await _conversationsFuture;
             },
+            child: ListView.builder(
+              itemCount: chats.length,
+              itemBuilder: (context, index) {
+                final chat = chats[index];
+                final chatId = chat['id']?.toString() ?? '';
+                final other = (chat['otherUser'] ?? {}) as Map<String, dynamic>;
+                final last = (chat['lastMessage'] ?? {}) as Map<String, dynamic>;
+
+                final name = other['name'] ?? 'User';
+                final photoUrl = other['photoUrl'] ?? '';
+                final lastContent = last['content'] ?? last['text'] ?? '';
+                final lastTimestamp = last['timestamp'];
+
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundImage: NetworkImage(
+                      photoUrl.isNotEmpty ? photoUrl : 'https://ui-avatars.com/api/?name=$name',
+                    ),
+                  ),
+                  title: Text(name),
+                  subtitle: Text(lastContent),
+                  trailing: Text(
+                    lastTimestamp != null ? _formatTimestampServer(lastTimestamp) : '',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatDetailScreen(
+                          chatId: chatId,
+                          peerId: other['id']?.toString() ?? '',
+                          peerName: name,
+                          peerPhotoUrl: photoUrl,
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
           );
         },
       ),
     );
   }
 
-  String _formatTimestamp(Timestamp timestamp) {
-    final dt = timestamp.toDate();
+  String _formatTimestampServer(dynamic ts) {
+    DateTime dt;
+    if (ts is String) {
+      dt = DateTime.tryParse(ts) ?? DateTime.now();
+    } else if (ts is int) {
+      dt = DateTime.fromMillisecondsSinceEpoch(ts);
+    } else {
+      dt = DateTime.now();
+    }
     final now = DateTime.now();
     final isToday = dt.day == now.day && dt.month == now.month && dt.year == now.year;
-
     if (isToday) {
       return '${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
     } else {

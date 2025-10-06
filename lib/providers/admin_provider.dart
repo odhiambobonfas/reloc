@@ -71,6 +71,28 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  /// Approve a user as a mover (sets role to 'mover' and verifies)
+  Future<void> approveMover(String userId) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({
+        'role': 'mover',
+        'isVerified': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      final int index = _allUsers.indexWhere((user) => user.id == userId);
+      if (index != -1) {
+        _allUsers[index] = _allUsers[index]
+            .copyWith(role: 'mover', isVerified: true);
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _error = 'Error approving mover: $e';
+      notifyListeners();
+    }
+  }
+
   /// Detect duplicate users by email (same email used more than once)
   List<UserModel> findDuplicateEmails() {
     final Map<String, List<UserModel>> grouped = {};
