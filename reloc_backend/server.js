@@ -60,16 +60,13 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 /* ✅ PostgreSQL Connection with Enhanced Error Handling */
+if (!process.env.DATABASE_URL) {
+  console.error("FATAL ERROR: DATABASE_URL is not defined.");
+  process.exit(1);
+}
 const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || '192.168.20.58',
-  database: process.env.DB_NAME || 'reloc',
-  password: process.env.DB_PASSWORD || 'your_password_here',
-  port: process.env.DB_PORT || 5432,
-  max: 20, // Maximum number of clients in the pool
-  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
 });
 
 // Enhanced connection handling
@@ -107,6 +104,7 @@ const messageRoutes = require('./routes/messageRoutes');
 const paymentRoutes = require('./routes/paymentRoutes'); 
 const notificationRoutes = require('./routes/notificationRoutes');
 const notificationSettingsRoutes = require('./routes/notificationSettingsRoutes');
+const uploadRoute = require('./routes/uploadRoute');
 
 // Posts endpoints mounted under /api so frontend can call /api/posts
 app.use('/api', postRoutes);
@@ -116,6 +114,17 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/mpesa', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/notifications', notificationSettingsRoutes);
+app.use('/api', uploadRoute);
+
+/* ✅ DB Test Endpoint */
+app.get('/db-test', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT NOW()');
+    res.json({ connected: true, time: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ connected: false, error: err.message });
+  }
+});
 
 /* ✅ Health Check Endpoint */
 app.get('/health', (req, res) => {
@@ -181,13 +190,9 @@ process.on('SIGINT', () => {
 
 /* ✅ Start Server */
 const PORT = process.env.PORT || 5000;
-const SERVER_IP = process.env.SERVER_IP || '192.168.20.58';
 
-console.log(`DEBUG: process.env.SERVER_IP = ${process.env.SERVER_IP}`);
-console.log(`DEBUG: process.env.PORT = ${process.env.PORT}`);
-
-app.listen(PORT, SERVER_IP, () => {
-  console.log(`✅ Server running at http://${SERVER_IP}:${PORT}`);
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
   console.log(`✅ Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`✅ Health check available at http://${SERVER_IP}:${PORT}/health`);
+  console.log(`✅ Health check available at http://localhost:${PORT}/health`);
 });

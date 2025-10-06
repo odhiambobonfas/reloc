@@ -3,7 +3,7 @@ require("dotenv").config();
 
 // console.log('🔧 Database Configuration:', {
 //   user: process.env.DB_USER || "postgres",
-//   host: process.env.DB_HOST || "192.168.20.58",
+//   host: process.env.DB_HOST || "192.168.20.207",
 //   database: process.env.DB_NAME || "reloc",
 //   port: process.env.DB_PORT || 5432,
 //   // Don't log password for security
@@ -14,7 +14,7 @@ require("dotenv").config();
 // const db = mysql.createConnection({
 //   user: process.env.DB_USER || "root",
 //   password: process.env.DB_PASSWORD || "",
-//   host: process.env.DB_HOST || "192.168.20.58",
+//   host: process.env.DB_HOST || "192.168.20.207",
 //   database: process.env.DB_NAME || "reloc",
 // });
 
@@ -30,7 +30,7 @@ require("dotenv").config();
 
 const pool = new Pool({
   user: process.env.DB_USER || "postgres",
-  host: process.env.DB_HOST || "192.168.20.58",
+  host: process.env.DB_HOST || "192.168.20.207",
   database: process.env.DB_NAME || "reloc",
   password: process.env.DB_PASSWORD || "your_password_here",
   port: process.env.DB_PORT || 5432,
@@ -65,7 +65,7 @@ const testConnection = async () => {
   } catch (err) {
     console.error('❌ PostgreSQL connection error:', err.message);
     console.error('❌ Connection details:', {
-      host: process.env.DB_HOST || "192.168.20.58",
+      host: process.env.DB_HOST || "192.168.20.207",
       port: process.env.DB_PORT || 5432,
       database: process.env.DB_NAME || "reloc",
       user: process.env.DB_USER || "postgres"
