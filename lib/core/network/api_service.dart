@@ -2,10 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:reloc/core/constants/api_constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String _baseUrl = 'http://192.168.20.58:5000/api';
+  static const String _baseUrl = ApiConstants.baseUrl;
   static const Duration _timeout = Duration(seconds: 30);
   static final Map<String, String> _defaultHeaders = {
     'Content-Type': 'application/json',
@@ -184,25 +185,49 @@ class ApiService {
 
   /// Handle HTTP response
   static Map<String, dynamic> _handleResponse(http.Response response) {
-    try {
-      final body = jsonDecode(response.body);
-      
+    // If the response body is empty or not valid JSON, handle it gracefully
+    if (response.body.isEmpty) {
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        return body;
+        // Successful request but empty response, might be valid for some endpoints (e.g., DELETE)
+        return {
+          'success': true,
+          'statusCode': response.statusCode,
+          'data': {}, // Return empty map for consistency
+        };
+      } else {
+        // Error response with empty body
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'error': 'Server Error',
+          'message': 'Received status code ${response.statusCode} with an empty response body.',
+        };
+      }
+    }
+
+    try {
+      final dynamic body = jsonDecode(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return {
+          'success': true,
+          'statusCode': response.statusCode,
+          'data': body,
+        };
       } else {
         return {
           'success': false,
-          'error': body['error'] ?? 'Request failed',
-          'message': body['message'] ?? 'An error occurred',
           'statusCode': response.statusCode,
+          'error': body is Map ? body['error'] ?? 'Request failed' : 'Request failed',
+          'message': body is Map ? body['message'] ?? 'An error occurred' : response.body,
         };
       }
     } catch (e) {
       return {
         'success': false,
-        'error': 'Invalid response format',
-        'message': 'Failed to parse response',
         'statusCode': response.statusCode,
+        'error': 'Invalid response format',
+        'message': 'Failed to parse response body: ${response.body}',
       };
     }
   }
@@ -212,15 +237,17 @@ class ApiService {
     String errorMessage = 'An unexpected error occurred';
     
     if (error is SocketException) {
-      errorMessage = 'No internet connection';
+      errorMessage = 'No internet connection. Please check your network settings.';
     } else if (error is HttpException) {
-      errorMessage = 'HTTP error occurred';
+      errorMessage = 'HTTP error occurred. Could not find the requested resource.';
     } else if (error is FormatException) {
-      errorMessage = 'Data format error';
+      errorMessage = 'Data format error. The server response was not in the expected format.';
     } else if (error is TimeoutException) {
-      errorMessage = 'Request timeout';
+      errorMessage = 'Request timeout. The server took too long to respond.';
+    } else if (error is http.ClientException) { // Specifically handle http.ClientException
+      errorMessage = 'Failed to connect to the server. This might be due to the server being offline, a firewall, or a CORS issue.';
     } else if (error.toString().contains('CORS')) {
-      errorMessage = 'Cross-origin request blocked';
+      errorMessage = 'Cross-origin request blocked. Please check server CORS configuration.';
     }
 
     if (kDebugMode) {

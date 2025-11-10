@@ -1,84 +1,119 @@
 const { Pool } = require("pg");
 require("dotenv").config();
 
-// console.log('🔧 Database Configuration:', {
-//   user: process.env.DB_USER || "postgres",
-//   host: process.env.DB_HOST || "192.168.20.207",
-//   database: process.env.DB_NAME || "reloc",
-//   port: process.env.DB_PORT || 5432,
-//   // Don't log password for security
-// });
+const isProduction = process.env.NODE_ENV === "production";
 
-// const mysql = require("mysql2");
+// Debug: Log environment variables (remove in production if sensitive)
+console.log("🔧 Database Configuration Debug:");
+console.log("🔧 DATABASE_URL:", process.env.DATABASE_URL ? "Set" : "Not set");
+console.log("🔧 PGHOST:", process.env.PGHOST || "Not set");
+console.log("🔧 PGPORT:", process.env.PGPORT || "Not set");
+console.log("🔧 PGDATABASE:", process.env.PGDATABASE || "Not set");
+console.log("🔧 PGUSER:", process.env.PGUSER || "Not set");
+console.log("🔧 NODE_ENV:", process.env.NODE_ENV);
 
-// const db = mysql.createConnection({
-//   user: process.env.DB_USER || "root",
-//   password: process.env.DB_PASSWORD || "",
-//   host: process.env.DB_HOST || "192.168.20.207",
-//   database: process.env.DB_NAME || "reloc",
-// });
+// Primary configuration - use DATABASE_URL if available
+let poolConfig;
 
-// db.connect((err) => {
-//   if (err) {
-//     console.error("Error connecting to the database:", err);
-//     return;
-//   }
-//   console.log("Connected to the database.");
-// });
+if (process.env.DATABASE_URL) {
+  poolConfig = {
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false,
+    },
+  };
+  console.log("🔧 Using DATABASE_URL for connection with connection string.");
+} else {
+  console.error("❌ DATABASE_URL is not set. Please set it in your environment variables.");
+  process.exit(1);
+}
 
-// module.exports = db;
-
-const pool = new Pool({
-  user: process.env.DB_USER || "postgres",
-  host: process.env.DB_HOST || "192.168.20.207",
-  database: process.env.DB_NAME || "reloc",
-  password: process.env.DB_PASSWORD || "your_password_here",
-  port: process.env.DB_PORT || 5432,
-  max: 20, // Maximum number of clients in the pool
-  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+// Add connection pool settings
+Object.assign(poolConfig, {
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 15000,
+  maxUses: 7500, // Close connection after 7500 queries
 });
 
-
-// Enhanced connection handling
-pool.on('connect', (client) => {
-  console.log('✅ New client connected to PostgreSQL');
+console.log("🔧 Final connection config:", {
+  connectionString: poolConfig.connectionString ? "Set from DATABASE_URL" : "Not set",
+  ssl: poolConfig.ssl
 });
 
-pool.on('error', (err, client) => {
-  console.error('❌ Unexpected error on idle client', err);
-  process.exit(-1);
+const pool = new Pool(poolConfig);
+
+// Log connection events
+pool.on("connect", (client) => {
+  console.log("✅ New client connected to PostgreSQL");
 });
 
-// Test database connection
-const testConnection = async () => {
-  try {
-    const client = await pool.connect();
-    console.log('✅ PostgreSQL connected successfully!');
-    
-    // Test a simple query
-    const result = await client.query('SELECT NOW()');
-    console.log('✅ Database query test successful:', result.rows[0]);
-    
-    client.release();
-  } catch (err) {
-    console.error('❌ PostgreSQL connection error:', err.message);
-    console.error('❌ Connection details:', {
-      host: process.env.DB_HOST || "192.168.20.207",
-      port: process.env.DB_PORT || 5432,
-      database: process.env.DB_NAME || "reloc",
-      user: process.env.DB_USER || "postgres"
-    });
-    
-    // Don't exit in development, just log the error
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(-1);
+pool.on("acquire", (client) => {
+  console.log("🔗 Client acquired from pool");
+});
+
+pool.on("remove", (client) => {
+  console.log("🔌 Client removed from pool");
+});
+
+pool.on("error", (err, client) => {
+  console.error("❌ Unexpected error on idle PostgreSQL client", err);
+  // Don't exit process in production, let it recover
+  if (!isProduction) {
+    process.exit(-1);
+  }
+});
+
+// Enhanced connection test with retry logic
+const testConnection = async (retries = 3, delay = 5000) => {
+  let client;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`🔧 Database connection attempt ${attempt}/${retries}...`);
+      
+      client = await pool.connect();
+      console.log("✅ PostgreSQL connected successfully!");
+
+      // Run a simple test query
+      const result = await client.query("SELECT NOW() as current_time, version() as version");
+      console.log("✅ Database query test successful");
+      console.log("✅ Current time:", result.rows[0].current_time);
+      console.log("✅ PostgreSQL version:", result.rows[0].version.split(',')[0]); // Just first line
+
+      client.release();
+      return true; // Success
+      
+    } catch (err) {
+      console.error(`❌ PostgreSQL connection attempt ${attempt} failed:`, err.message);
+      
+      if (client) {
+        client.release();
+      }
+      
+      if (attempt < retries) {
+        console.log(`⏳ Retrying in ${delay/1000} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error("❌ All connection attempts failed");
+        console.error("❌ Final connection details:", {
+          usingDatabaseUrl: !!process.env.DATABASE_URL,
+          connectionString: poolConfig.connectionString ? "Set" : "Not set",
+          ssl: poolConfig.ssl,
+        });
+        
+        if (!isProduction) {
+          console.log("⚠️  Continuing without database connection...");
+        }
+        return false;
+      }
     }
   }
 };
 
-// Test connection on startup
-testConnection();
+// Test connection on startup with retry
+setTimeout(() => {
+  testConnection();
+}, 1000); // Small delay to let environment settle
 
 module.exports = pool;

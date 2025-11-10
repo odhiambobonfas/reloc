@@ -47,9 +47,16 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
         "amount": amount,
         "phone": phone, // ✅ Must be in 2547XXXXXXXX format
       });
-      setState(() {
-        _message = response["message"] ?? "Withdrawal initiated successfully!";
-      });
+
+      if (response['success'] == true) {
+        setState(() {
+          _message = response["message"] ?? "Withdrawal initiated successfully!";
+        });
+      } else {
+        setState(() {
+          _message = response["message"] ?? response['error'] ?? "Failed to initiate withdrawal.";
+        });
+      }
     } catch (e) {
       setState(() {
         _message = "Something went wrong: $e";

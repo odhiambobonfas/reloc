@@ -6,7 +6,7 @@
 echo "🔧 Running database migration..."
 
 # Database connection details
-DB_HOST="192.168.20.58"
+DB_HOST="192.168.20.207"
 DB_PORT="5432"
 DB_NAME="reloc"
 DB_USER="postgres"

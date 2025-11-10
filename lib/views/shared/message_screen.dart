@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:reloc/models/message_model.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/network/api_service.dart';
+import '../../services/message_service.dart';
+import '../../widgets/common/message_bubble.dart';
 
 class MessageScreen extends StatefulWidget {
-  final String receiverId; // from residents or movers
+  final String receiverId;
   final String receiverName;
 
   const MessageScreen({
@@ -20,36 +22,28 @@ class MessageScreen extends StatefulWidget {
 class _MessageScreenState extends State<MessageScreen> {
   final TextEditingController _controller = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  List<Map<String, dynamic>> _messages = [];
-  bool _isLoading = true;
-
-  late String _currentUid;
+  late Future<List<Map<String, dynamic>>> _messagesFuture;
+  late String _chatId;
 
   @override
   void initState() {
     super.initState();
-    _currentUid = _auth.currentUser?.uid ?? "";
-    _fetchMessages();
+    final currentUser = _auth.currentUser;
+    if (currentUser != null) {
+      final uids = [currentUser.uid, widget.receiverId]..sort();
+      _chatId = uids.join('_');
+      _messagesFuture = MessageService.fetchMessages(_chatId);
+    } else {
+      // Handle user not logged in
+      _chatId = '';
+      _messagesFuture = Future.value([]);
+    }
   }
 
   Future<void> _fetchMessages() async {
-    try {
-      final result = await ApiService.get('/messages?userId=$_currentUid&receiverId=${widget.receiverId}');
-      if (result['success'] == true) {
-        final List data = result['data'];
-        setState(() {
-          _messages = List<Map<String, dynamic>>.from(data);
-          _isLoading = false;
-        });
-      } else {
-        throw Exception(result['message'] ?? "Failed to fetch messages");
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error fetching messages: $e")));
-    }
+    setState(() {
+      _messagesFuture = MessageService.fetchMessages(_chatId);
+    });
   }
 
   Future<void> _sendMessage() async {
@@ -57,26 +51,30 @@ class _MessageScreenState extends State<MessageScreen> {
     if (text.isEmpty) return;
 
     try {
-      final result = await ApiService.post('/messages', body: {
-        "senderId": _currentUid,
-        "receiverId": widget.receiverId,
-        "content": text,
-      });
-
-      if (result['success'] == true) {
+      final success = await MessageService.sendMessage(
+        chatId: _chatId,
+        content: text,
+        receiverId: widget.receiverId,
+      );
+      if (success) {
         _controller.clear();
         _fetchMessages();
       } else {
-        throw Exception(result['message'] ?? "Failed to send message");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Failed to send message")),
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error sending message: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error sending message: $e")),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final currentUid = _auth.currentUser?.uid ?? "";
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.receiverName),
@@ -86,37 +84,39 @@ class _MessageScreenState extends State<MessageScreen> {
       body: Column(
         children: [
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = _messages[index];
-                      final isMe = msg['senderId'] == _currentUid;
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _messagesFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+                final messages = snapshot.data ?? [];
+                if (messages.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'No messages yet.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final msg = messages[index];
+                    final isMe = msg['senderId'] == currentUid;
 
-                      return Align(
-                        alignment:
-                            isMe ? Alignment.centerRight : Alignment.centerLeft,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 8, horizontal: 12),
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isMe
-                                ? Colors.greenAccent
-                                : Colors.grey[800],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            msg['content'] ?? "",
-                            style: TextStyle(
-                                color: isMe ? Colors.black : Colors.white),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                    return MessageBubble(
+                      message: msg['content'],
+                      isMe: isMe,
+                    );
+                  },
+                );
+              },
+            ),
           ),
           Padding(
             padding: const EdgeInsets.all(8.0),
@@ -132,8 +132,8 @@ class _MessageScreenState extends State<MessageScreen> {
                       filled: true,
                       fillColor: Colors.black26,
                       border: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.all(Radius.circular(8))),
+                        borderRadius: BorderRadius.all(Radius.circular(8)),
+                      ),
                     ),
                   ),
                 ),

@@ -50,10 +50,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
         "amount": amount,
         "phone": phone, // ✅ Must be in 2547XXXXXXXX format
       });
-      setState(() {
-        _message = response["message"] ??
-            "Payment request sent! Check your M-Pesa phone to complete.";
-      });
+
+      if (response['success'] == true) {
+        setState(() {
+          _message = response["message"] ??
+              "Payment request sent! Check your M-Pesa phone to complete.";
+        });
+      } else {
+        setState(() {
+          _message = response["message"] ?? response['error'] ?? "Failed to initiate payment.";
+        });
+      }
     } catch (e) {
       setState(() {
         _message = "Something went wrong: $e";

@@ -60,6 +60,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 final photoUrl = other['photoUrl'] ?? '';
                 final lastContent = last['content'] ?? last['text'] ?? '';
                 final lastTimestamp = last['timestamp'];
+                final postContent = last['postContent'] as String?;
 
                 return ListTile(
                   leading: CircleAvatar(
@@ -68,7 +69,20 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     ),
                   ),
                   title: Text(name),
-                  subtitle: Text(lastContent),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (postContent != null)
+                        Text(
+                          'Re: ${postContent.length > 30 ? postContent.substring(0, 30) + '...' : postContent}',
+                          style: const TextStyle(
+                            fontStyle: FontStyle.italic,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      Text(lastContent),
+                    ],
+                  ),
                   trailing: Text(
                     lastTimestamp != null ? _formatTimestampServer(lastTimestamp) : '',
                     style: const TextStyle(fontSize: 12, color: Colors.grey),

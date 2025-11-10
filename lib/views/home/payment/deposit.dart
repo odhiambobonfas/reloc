@@ -47,10 +47,17 @@ class _DepositScreenState extends State<DepositScreen> {
         "amount": amount,
         "phone": phone, // ✅ Must be in 2547XXXXXXXX format
       });
-      setState(() {
-        _message = response["message"] ??
-            "STK Push sent. Check your phone to complete payment.";
-      });
+
+      if (response['success'] == true) {
+        setState(() {
+          _message = response["message"] ??
+              "STK Push sent. Check your phone to complete payment.";
+        });
+      } else {
+        setState(() {
+          _message = response["message"] ?? response['error'] ?? "Failed to initiate deposit.";
+        });
+      }
     } catch (e) {
       setState(() {
         _message = "Something went wrong: $e";

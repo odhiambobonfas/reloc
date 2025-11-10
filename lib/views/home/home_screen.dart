@@ -4,8 +4,9 @@ import 'package:reloc/views/home/movers_screen.dart';
 import 'package:reloc/views/home/residents_screen.dart';
 import 'package:reloc/views/home/profile_screen.dart';
 import 'package:reloc/views/home/post_as_screen.dart';
+import 'package:reloc/views/chat/chat_listing_screen.dart';
 import 'package:reloc/views/shared/notifications_screen.dart';
-import 'package:reloc/core/constants/app_colors.dart' as core_colors;
+import 'package:reloc/core/constants/app_colors.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,10 +25,11 @@ class _HomeScreenState extends State<HomeScreen>
   late Animation<double> _searchAnimation;
   late Animation<double> _fadeAnimation;
 
-  final List<Widget> _tabs = const [
+  final List<Widget> _tabs = [
     CommunityScreen(),
     MoversScreen(),
     ResidentsScreen(),
+    ChatListScreen(),
     ProfileScreen(),
   ];
 
@@ -95,10 +97,10 @@ class _HomeScreenState extends State<HomeScreen>
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        backgroundColor: core_colors.AppColors.background,
+        backgroundColor: AppColors.background,
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          backgroundColor: core_colors.AppColors.navBar,
+          backgroundColor: AppColors.navBar,
           elevation: 0,
           toolbarHeight: 48.0,
           title: AnimatedBuilder(
@@ -128,13 +130,13 @@ class _HomeScreenState extends State<HomeScreen>
         ),
         body: _tabs[_currentIndex],
         bottomNavigationBar: BottomNavigationBar(
-          backgroundColor: core_colors.AppColors.navBar,
-          selectedItemColor: core_colors.AppColors.primary,
+          backgroundColor: AppColors.navBar,
+          selectedItemColor: AppColors.primary,
           unselectedItemColor: Colors.white60,
           currentIndex: _currentIndex,
           onTap: (index) => setState(() => _currentIndex = index),
           type: BottomNavigationBarType.fixed,
-          items: const [
+          items: [
             BottomNavigationBarItem(
               icon: Icon(Icons.home_outlined),
               label: 'Community',
@@ -146,6 +148,10 @@ class _HomeScreenState extends State<HomeScreen>
             BottomNavigationBarItem(
               icon: Icon(Icons.apartment_outlined),
               label: 'Residents',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.message_outlined),
+              label: 'Messages',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),
@@ -173,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen>
                       style: TextStyle(color: Colors.black),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: core_colors.AppColors.primary,
+                      backgroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -232,20 +238,20 @@ class _HomeScreenState extends State<HomeScreen>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            core_colors.AppColors.primary.withOpacity(0.1),
-            core_colors.AppColors.primary.withOpacity(0.2),
+            AppColors.primary.withOpacity(0.1),
+            AppColors.primary.withOpacity(0.2),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: core_colors.AppColors.primary.withOpacity(0.3),
+          color: AppColors.primary.withOpacity(0.3),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: core_colors.AppColors.primary.withOpacity(0.1),
+            color: AppColors.primary.withOpacity(0.1),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -264,14 +270,14 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               Icon(
                 Icons.search,
-                color: core_colors.AppColors.primary,
+                color: AppColors.primary,
                 size: 18,
               ),
               SizedBox(width: 4),
               Text(
                 'Search',
                 style: TextStyle(
-                  color: core_colors.AppColors.primary,
+                  color: AppColors.primary,
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -311,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen>
               children: [
                 const Icon(
                   Icons.notifications_none,
-                  color: core_colors.AppColors.primary,
+                  color: AppColors.primary,
                   size: 18,
                 ),
                 // Notification badge
@@ -356,7 +362,7 @@ class _HomeScreenState extends State<HomeScreen>
             padding: const EdgeInsets.all(6),
             child: const Icon(
               Icons.person_outline,
-              color: core_colors.AppColors.primary,
+              color: AppColors.primary,
               size: 18,
             ),
           ),
@@ -374,7 +380,7 @@ class _HomeScreenState extends State<HomeScreen>
           color: Colors.black.withOpacity(0.7),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: core_colors.AppColors.primary.withOpacity(0.3),
+            color: AppColors.primary.withOpacity(0.3),
             width: 1,
           ),
         ),
@@ -382,7 +388,7 @@ class _HomeScreenState extends State<HomeScreen>
           controller: _searchController,
           focusNode: _searchFocusNode, // 👈 focus handled
           autofocus: true,
-          cursorColor: core_colors.AppColors.primary,
+          cursorColor: AppColors.primary,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 16,
@@ -395,7 +401,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             prefixIcon: const Icon(
               Icons.search,
-              color: core_colors.AppColors.primary,
+              color: AppColors.primary,
               size: 20,
             ),
             suffixIcon: _searchController.text.isNotEmpty

@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:reloc/core/network/api_service.dart';
 
 class MessageService {
@@ -5,7 +6,11 @@ class MessageService {
   /// Expected response: List of objects with keys:
   /// { id, otherUser: { id, name, photoUrl }, lastMessage: {...}, updatedAt }
   static Future<List<Map<String, dynamic>>> fetchConversations() async {
-    final result = await ApiService.get('/messages/conversations', requiresAuth: false);
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      throw Exception('User not logged in');
+    }
+    final result = await ApiService.get('/messages/conversations?uid=${currentUser.uid}', requiresAuth: true);
     if (result['success'] == true && result['data'] is List) {
       return (result['data'] as List).cast<Map<String, dynamic>>();
     }

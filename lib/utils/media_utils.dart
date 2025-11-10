@@ -1,5 +1,7 @@
+import 'package:reloc/core/constants/api_constants.dart';
+
 class MediaUtils {
-  static const String serverBaseUrl = 'http://192.168.20.58:5000';
+  static final String serverBaseUrl = ApiConstants.baseUrl.replaceAll('/api', '');
 
   static String getFullMediaUrl(String? mediaUrl) {
     if (mediaUrl == null || mediaUrl.isEmpty) {

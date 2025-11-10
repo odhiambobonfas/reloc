@@ -1,4 +1,4 @@
-# TODO: Replace IP 192.168.20.58 in entire project
+# TODO: Replace IP 192.168.20.207 in entire project
 
 ## Tasks
 - [x] Update reloc_backend/db/db.js
@@ -12,7 +12,7 @@
 - [x] Update lib/utils/media_utils.dart
 
 ## Information Gathered
-- The IP 192.168.20.58 is now used for API endpoints and database connections.
+- The IP 192.168.20.207 is now used for API endpoints and database connections.
 
 ## Plan
 - Use edit_file to replace the IP in each file.

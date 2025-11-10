@@ -1,26 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:reloc/core/constants/app_colors.dart';
 
 class NotFoundScreen extends StatelessWidget {
-  const NotFoundScreen({super.key});
+  const NotFoundScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('404 - Page Not Found'),
-      ),
-      body: const Center(
+      backgroundColor: AppColors.background,
+      body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red),
-            SizedBox(height: 16),
-            Text(
-              'Oops! Page not found.',
-              style: TextStyle(fontSize: 20),
+            const Icon(
+              Icons.error_outline,
+              color: AppColors.primary,
+              size: 100,
             ),
-            SizedBox(height: 8),
-            Text('The page you’re looking for doesn’t exist.'),
+            const SizedBox(height: 20),
+            const Text(
+              '404 - Page Not Found',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'The content you are looking for does not exist.',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 16,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.black,
+              ),
+              child: const Text('Go Back'),
+            ),
           ],
         ),
       ),

@@ -1,6 +1,6 @@
 
 class PostModel {
-  final String id;
+  final int id;
   final String content;
   final String authorId;
   final String authorName;
@@ -44,7 +44,7 @@ class PostModel {
 
   factory PostModel.fromMap(Map<String, dynamic> map) {
     return PostModel(
-      id: map['id'].toString(),
+      id: map['id'],
       content: map['content'] ?? '',
       authorId: map['user_id'] ?? '',
       authorName: map['author'] ?? 'Anonymous',
@@ -67,7 +67,7 @@ class PostModel {
   }
 
   PostModel copyWith({
-    String? id,
+    int? id,
     String? content,
     String? authorId,
     String? authorName,

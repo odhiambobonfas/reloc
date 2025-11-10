@@ -27,6 +27,9 @@ import '../views/shared/notification_settings_screen.dart';
 
 import '../views/home/community_screen.dart';
 
+import '../views/chat/chat_listing_screen.dart';
+import '../views/chat/chat_detail_screen.dart';
+
 // Models
 import '../models/resident_model.dart';
 
@@ -52,6 +55,10 @@ class AppRoutes {
   static const String residentHome = '/resident/home';
   static const String residentDetail = '/resident/detail';
   static const String residentProfile = '/resident/profile';
+
+  // 💬 Chat Routes
+  static const String chatList = '/chat';
+  static const String chatDetail = '/chat/detail';
 
   // 🔹 Shared Routes
   static const String savedPosts = '/saved-posts';
@@ -110,7 +117,7 @@ class AppRoutes {
 
       // ✅ Resident
       case residentHome:
-        return MaterialPageRoute(builder: (_) => const CommunityScreen());
+        return MaterialPageRoute(builder: (_) => const HomeScreen());
 
       case residentProfile:
         return MaterialPageRoute(builder: (_) => const ResidentProfileScreen());
@@ -127,6 +134,24 @@ class AppRoutes {
 
       case AppRoutes.notificationSettings:
         return MaterialPageRoute(builder: (_) => const NotificationSettingsScreen());
+
+      // 💬 Chat Routes
+      case chatList:
+        return MaterialPageRoute(builder: (_) => const ChatListScreen());
+
+      case chatDetail:
+        if (settings.arguments is Map<String, dynamic>) {
+          final args = settings.arguments as Map<String, dynamic>;
+          return MaterialPageRoute(
+            builder: (_) => ChatDetailScreen(
+              chatId: args['chatId'],
+              peerId: args['peerId'],
+              peerName: args['peerName'],
+              peerPhotoUrl: args['peerPhotoUrl'],
+            ),
+          );
+        }
+        return MaterialPageRoute(builder: (_) => const NotFoundScreen());
 
       // ❌ Unknown route → Not Found
       default:

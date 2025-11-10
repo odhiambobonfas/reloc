@@ -76,12 +76,12 @@ npm run dev
 Create a `.env` file in the backend directory:
 ```env
 DB_USER=postgres
-DB_HOST=192.168.20.58
+DB_HOST=192.168.20.207
 DB_NAME=reloc
 DB_PASSWORD=your_password
 DB_PORT=5432
 NODE_ENV=development
-SERVER_IP=192.168.20.58
+SERVER_IP=192.168.20.207
 ```
 
 ## 📱 Platform-Specific Features

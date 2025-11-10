@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -11,9 +10,9 @@ import '../../core/constants/app_colors.dart';
 import '../../core/network/api_service.dart';
 import '../../services/user_service.dart';
 import 'package:reloc/views/shared/message_screen.dart';
+import 'package:reloc/views/shared/not_found_screen.dart';
 import '../../utils/media_utils.dart';
-
-const String apiBaseUrl = "http://192.168.20.58:5000/api";
+import '../../models/post_model.dart';
 
 class CommunityScreen extends StatefulWidget {
   const CommunityScreen({super.key});
@@ -23,7 +22,7 @@ class CommunityScreen extends StatefulWidget {
 }
 
 class _CommunityScreenState extends State<CommunityScreen> {
-  late Future<List<Map<String, dynamic>>> postsFuture;
+  late Future<List<PostModel>> postsFuture;
   String? userId;
   final UserService _userService = UserService();
   final Map<String, String> _userNames = {};
@@ -31,30 +30,121 @@ class _CommunityScreenState extends State<CommunityScreen> {
   String _selectedCategory = 'All';
   final List<String> _categories = ['All', 'Relocation Tips', 'Events', 'General'];
 
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _isLoading = false;
+
+  // Enhanced responsive sizing methods
+  double getResponsiveSize(BuildContext context, double baseSize) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth < 360) return baseSize * 0.8;  // Small phones
+    if (screenWidth < 400) return baseSize * 0.9;  // Medium phones
+    if (screenWidth < 500) return baseSize;        // Large phones
+    return baseSize * 1.1;                         // Tablets
+  }
+
+  double getResponsiveFontSize(BuildContext context, {double baseSize = 14}) {
+    return getResponsiveSize(context, baseSize);
+  }
+
+  double getResponsivePadding(BuildContext context) {
+    return getResponsiveSize(context, 16);
+  }
+
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-      color: AppColors.navBar,
-      child: Row(
-        children: [
-          const Icon(Icons.forum, color: AppColors.primary, size: 28),
-          const SizedBox(width: 12),
-          const Text(
-            "Community",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.add, color: AppColors.primary, size: 28),
-            onPressed: () => Navigator.pushNamed(context, '/post-as'),
-            tooltip: "Create Post",
-          ),
-        ],
+      padding: EdgeInsets.symmetric(
+        horizontal: getResponsivePadding(context),
+        vertical: MediaQuery.of(context).size.height * 0.02,
       ),
+      color: AppColors.navBar,
+      child: _isSearching ? _buildSearchAppBar() : _buildNormalAppBar(),
+    );
+  }
+
+  Widget _buildNormalAppBar() {
+    return Row(
+      children: [
+        Icon(
+          Icons.forum, 
+          color: AppColors.primary, 
+          size: getResponsiveSize(context, 28)
+        ),
+        SizedBox(width: getResponsiveSize(context, 12)),
+        Text(
+          "Community",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: getResponsiveFontSize(context, baseSize: 20),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Spacer(),
+        IconButton(
+          icon: Icon(
+            Icons.search, 
+            color: AppColors.primary, 
+            size: getResponsiveSize(context, 28)
+          ),
+          onPressed: () {
+            setState(() {
+              _isSearching = true;
+            });
+          },
+          tooltip: "Search",
+        ),
+        IconButton(
+          icon: Icon(
+            Icons.add, 
+            color: AppColors.primary, 
+            size: getResponsiveSize(context, 28)
+          ),
+          onPressed: () => Navigator.pushNamed(context, '/post-as'),
+          tooltip: "Create Post",
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSearchAppBar() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _searchController,
+            style: TextStyle(
+              color: Colors.white, 
+              fontSize: getResponsiveFontSize(context, baseSize: 16)
+            ),
+            decoration: InputDecoration(
+              hintText: 'Search...',
+              hintStyle: TextStyle(
+                color: Colors.white70, 
+                fontSize: getResponsiveFontSize(context, baseSize: 16)
+              ),
+              border: InputBorder.none,
+            ),
+            onChanged: (value) {
+              // Implement search logic here
+            },
+          ),
+        ),
+        IconButton(
+          icon: Icon(
+            Icons.close, 
+            color: AppColors.primary, 
+            size: getResponsiveSize(context, 28)
+          ),
+          onPressed: () {
+            setState(() {
+              _isSearching = false;
+              _searchController.clear();
+            });
+          },
+          tooltip: "Close Search",
+        ),
+      ],
     );
   }
 
@@ -133,20 +223,24 @@ class _CommunityScreenState extends State<CommunityScreen> {
     };
   }
 
-  Future<List<Map<String, dynamic>>> fetchPosts() async {
+  Future<List<PostModel>> fetchPosts() async {
     try {
-      print('Fetching posts from: $apiBaseUrl/posts');
-      final response = await http.get(Uri.parse('$apiBaseUrl/posts'));
-      if (response.statusCode == 200) {
-        final List data = jsonDecode(response.body);
-        print('Successfully fetched ${data.length} posts');
-        return data.cast<Map<String, dynamic>>();
-      } else {
-        print('Failed to load posts: ${response.statusCode}');
-        throw Exception("Failed to load posts: ${response.statusCode}");
+      final response = await ApiService.get('/posts');
+      if (response.containsKey('success') && response['success'] == false) {
+        if (response.containsKey('error') && response['error'] == 'Not Found') {
+          throw Exception('Not Found');
+        }
+        throw Exception(
+            'Failed to load posts: ${response['message'] ?? 'Unknown error'}');
       }
+      final List data = response['data'];
+      print('Successfully fetched ${data.length} posts');
+      return data.map((postJson) => PostModel.fromMap(postJson)).toList();
     } catch (e) {
       print('Exception fetching posts: $e');
+      if (e.toString().contains('Not Found')) {
+        throw Exception('Not Found');
+      }
       throw Exception("Network error: $e");
     }
   }
@@ -159,10 +253,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
       return;
     }
 
-    await http.post(
-      Uri.parse('$apiBaseUrl/posts/$postId/like'),
-      body: jsonEncode({'userId': userId}),
-      headers: {"Content-Type": "application/json"},
+    await ApiService.post(
+      '/posts/$postId/like',
+      body: {'userId': userId},
     );
 
     setState(() {
@@ -206,12 +299,17 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   Future<List<Map<String, dynamic>>> _fetchCommentsFromServer(int postId) async {
     try {
-      final response = await http.get(Uri.parse('$apiBaseUrl/posts/$postId/comments'));
-      if (response.statusCode == 200) {
-        final List data = jsonDecode(response.body);
-        return data.cast<Map<String, dynamic>>();
+      final response = await ApiService.get('/posts/$postId/comments');
+      if (response.containsKey('data')) {
+        final innerData = response['data']['data'];
+        if (innerData is List) {
+          return innerData.cast<Map<String, dynamic>>();
+        } else {
+          print('Error fetching comments: inner data is not a list');
+          return [];
+        }
       } else {
-        print('Error fetching comments: ${response.statusCode}');
+        print('Error fetching comments: Response does not contain data key');
         return [];
       }
     } catch (e) {
@@ -229,23 +327,22 @@ class _CommunityScreenState extends State<CommunityScreen> {
     }
 
     try {
-      final response = await http.post(
-        Uri.parse('$apiBaseUrl/posts/$postId/comments'),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
+      final response = await ApiService.post(
+        '/posts/$postId/comments',
+        body: {
           'user_id': userId,
           'content': content,
           if (parentId != null) 'parent_id': parentId,
-        }),
+        },
       );
 
-      if (response.statusCode == 201) {
+      if (response['success']) {
         _commentFutures.remove(postId);
         setState(() {});
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Failed to add comment: ${response.statusCode}"),
+            content: Text("Failed to add comment: ${response['statusCode']}"),
             backgroundColor: Colors.red,
           ),
         );
@@ -273,11 +370,17 @@ class _CommunityScreenState extends State<CommunityScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.navBar,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
             Icon(Icons.person, color: AppColors.primary),
-            SizedBox(width: 8),
-            Text("User Profile", style: TextStyle(color: Colors.white)),
+            SizedBox(width: getResponsiveSize(context, 8)),
+            Text(
+              "User Profile", 
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: getResponsiveFontSize(context, baseSize: 16),
+              )
+            ),
           ],
         ),
         content: SingleChildScrollView(
@@ -296,7 +399,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Close", style: TextStyle(color: Colors.white70)),
+            child: Text(
+              "Close", 
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: getResponsiveFontSize(context, baseSize: 14),
+              )
+            ),
           ),
         ],
       ),
@@ -305,21 +414,28 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   Widget _buildUserDetailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.symmetric(vertical: getResponsiveSize(context, 8)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 80,
+            width: getResponsiveSize(context, 80),
             child: Text(
               "$label:",
-              style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: AppColors.primary, 
+                fontWeight: FontWeight.bold,
+                fontSize: getResponsiveFontSize(context, baseSize: 14),
+              ),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: getResponsiveFontSize(context, baseSize: 14),
+              ),
             ),
           ),
         ],
@@ -348,20 +464,27 @@ class _CommunityScreenState extends State<CommunityScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.navBar,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(children: [
+        title: Row(children: [
           Icon(Icons.reply, color: AppColors.primary),
-          SizedBox(width: 8),
-          Text("Reply", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          SizedBox(width: getResponsiveSize(context, 8)),
+          Text(
+            "Reply", 
+            style: TextStyle(
+              color: Colors.white, 
+              fontWeight: FontWeight.bold,
+              fontSize: getResponsiveFontSize(context, baseSize: 16),
+            )
+          ),
         ]),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: EdgeInsets.all(getResponsiveSize(context, 12)),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(getResponsiveSize(context, 8)),
                 border: Border.all(color: Colors.white.withOpacity(0.1)),
               ),
               child: Column(
@@ -369,50 +492,72 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 children: [
                   Row(children: [
                     Container(
-                      width: 24,
-                      height: 24,
+                      width: getResponsiveSize(context, 24),
+                      height: getResponsiveSize(context, 24),
                       decoration: BoxDecoration(
                         color: AppColors.primary.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(getResponsiveSize(context, 12)),
                       ),
-                      child: const Icon(Icons.person, color: AppColors.primary, size: 12),
+                      child: Icon(
+                        Icons.person, 
+                        color: AppColors.primary, 
+                        size: getResponsiveSize(context, 12)
+                      ),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: getResponsiveSize(context, 8)),
                     FutureBuilder<String>(
                       future: _getUserDisplayName(parentUserId),
                       builder: (context, nameSnapshot) {
                         return Text(
                           nameSnapshot.data ?? 'User',
-                          style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 12),
+                          style: TextStyle(
+                            color: AppColors.primary, 
+                            fontWeight: FontWeight.bold, 
+                            fontSize: getResponsiveFontSize(context, baseSize: 12)
+                          ),
                         );
                       },
                     ),
                   ]),
-                  const SizedBox(height: 8),
-                  Text(parentComment['content'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                  SizedBox(height: getResponsiveSize(context, 8)),
+                  Text(
+                    parentComment['content'] ?? '', 
+                    style: TextStyle(
+                      color: Colors.white, 
+                      fontSize: getResponsiveFontSize(context, baseSize: 14)
+                    )
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            const Text("Your reply:", style: TextStyle(color: Colors.white70, fontSize: 14)),
-            const SizedBox(height: 8),
+            SizedBox(height: getResponsiveSize(context, 16)),
+            Text(
+              "Your reply:", 
+              style: TextStyle(
+                color: Colors.white70, 
+                fontSize: getResponsiveFontSize(context, baseSize: 14)
+              )
+            ),
+            SizedBox(height: getResponsiveSize(context, 8)),
             TextField(
               controller: replyController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Colors.white),
               maxLines: 3,
               autofocus: true,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: "Write your reply...",
                 hintStyle: TextStyle(color: Colors.white54),
-                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(getResponsiveSize(context, 8)))),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
+                  borderRadius: BorderRadius.all(Radius.circular(getResponsiveSize(context, 8))),
                   borderSide: BorderSide(color: AppColors.primary),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
+                  borderRadius: BorderRadius.all(Radius.circular(getResponsiveSize(context, 8))),
                   borderSide: BorderSide(color: Colors.white24),
                 ),
+                filled: true, // Explicitly fill the background
+                fillColor: AppColors.inputField, // Use a dark input field color
               ),
             ),
           ],
@@ -420,13 +565,19 @@ class _CommunityScreenState extends State<CommunityScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel", style: TextStyle(color: Colors.white70)),
+            child: Text(
+              "Cancel", 
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: getResponsiveFontSize(context, baseSize: 14),
+              )
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(getResponsiveSize(context, 8))),
             ),
             onPressed: () {
               if (replyController.text.trim().isNotEmpty) {
@@ -434,7 +585,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 Navigator.pop(context);
               }
             },
-            child: const Text("Send Reply"),
+            child: Text(
+              "Send Reply",
+              style: TextStyle(fontSize: getResponsiveFontSize(context, baseSize: 14)),
+            ),
           ),
         ],
       ),
@@ -446,32 +600,66 @@ class _CommunityScreenState extends State<CommunityScreen> {
       future: _getUserDisplayName(authorId),
       builder: (context, nameSnapshot) {
         return PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, color: Colors.white70),
+          icon: Icon(
+            Icons.more_vert, 
+            color: Colors.white70,
+            size: getResponsiveSize(context, 20),
+          ),
           color: AppColors.navBar,
           itemBuilder: (context) => [
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'share',
               child: Row(children: [
-                Icon(Icons.share, color: Colors.white, size: 20),
-                SizedBox(width: 8),
-                Text('Share', style: TextStyle(color: Colors.white)),
+                Icon(
+                  Icons.share, 
+                  color: Colors.white, 
+                  size: getResponsiveSize(context, 20)
+                ),
+                SizedBox(width: getResponsiveSize(context, 8)),
+                Text(
+                  'Share', 
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: getResponsiveFontSize(context, baseSize: 14),
+                  )
+                ),
               ]),
             ),
             if (authorId != userId)
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'message',
               child: Row(children: [
-                Icon(Icons.message, color: Colors.white, size: 20),
-                SizedBox(width: 8),
-                Text('Message Privately', style: TextStyle(color: Colors.white)),
+                Icon(
+                  Icons.message, 
+                  color: Colors.white, 
+                  size: getResponsiveSize(context, 20)
+                ),
+                SizedBox(width: getResponsiveSize(context, 8)),
+                Text(
+                  'Message Privately', 
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: getResponsiveFontSize(context, baseSize: 14),
+                  )
+                ),
               ]),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'report',
               child: Row(children: [
-                Icon(Icons.flag, color: Colors.white, size: 20),
-                SizedBox(width: 8),
-                Text('Report', style: TextStyle(color: Colors.white)),
+                Icon(
+                  Icons.flag, 
+                  color: Colors.white, 
+                  size: getResponsiveSize(context, 20)
+                ),
+                SizedBox(width: getResponsiveSize(context, 8)),
+                Text(
+                  'Report', 
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: getResponsiveFontSize(context, baseSize: 14),
+                  )
+                ),
               ]),
             ),
           ],
@@ -492,30 +680,48 @@ class _CommunityScreenState extends State<CommunityScreen> {
       future: fetchComments(postId),
       builder: (context, commentSnapshot) {
         if (commentSnapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2)),
+          return Padding(
+            padding: EdgeInsets.all(getResponsiveSize(context, 16)),
+            child: Center(
+              child: CircularProgressIndicator(
+                color: AppColors.primary, 
+                strokeWidth: 2
+              ),
+            ),
           );
         }
 
         if (commentSnapshot.hasError) {
           return Container(
-            padding: const EdgeInsets.all(16.0),
-            margin: const EdgeInsets.all(8.0),
+            padding: EdgeInsets.all(getResponsiveSize(context, 16)),
+            margin: EdgeInsets.all(getResponsiveSize(context, 8)),
             decoration: BoxDecoration(
               color: Colors.red.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(getResponsiveSize(context, 8)),
               border: Border.all(color: Colors.red.withOpacity(0.3)),
             ),
             child: Column(
               children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 24),
-                const SizedBox(height: 8),
-                const Text('Error loading comments', style: TextStyle(color: Colors.red, fontSize: 14)),
-                const SizedBox(height: 8),
+                Icon(
+                  Icons.error_outline, 
+                  color: Colors.red, 
+                  size: getResponsiveSize(context, 24)
+                ),
+                SizedBox(height: getResponsiveSize(context, 8)),
+                Text(
+                  'Error loading comments', 
+                  style: TextStyle(
+                    color: Colors.red, 
+                    fontSize: getResponsiveFontSize(context, baseSize: 14)
+                  )
+                ),
+                SizedBox(height: getResponsiveSize(context, 8)),
                 TextButton(
                   onPressed: () => setState(() { _commentFutures.remove(postId); }),
-                  child: const Text('Retry', style: TextStyle(color: AppColors.primary)),
+                  child: Text(
+                    'Retry', 
+                    style: TextStyle(color: AppColors.primary)
+                  ),
                 ),
               ],
             ),
@@ -525,7 +731,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         final comments = commentSnapshot.data ?? [];
 
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(getResponsiveSize(context, 16)),
           decoration: BoxDecoration(
             color: Colors.black.withOpacity(0.1),
             borderRadius: const BorderRadius.only(
@@ -538,46 +744,69 @@ class _CommunityScreenState extends State<CommunityScreen> {
             children: [
               if (comments.isNotEmpty) ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: getResponsiveSize(context, 12), 
+                    vertical: getResponsiveSize(context, 8)
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(getResponsiveSize(context, 8)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.comment_outlined, color: AppColors.primary, size: 16),
-                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.comment_outlined, 
+                        color: AppColors.primary, 
+                        size: getResponsiveSize(context, 16)
+                      ),
+                      SizedBox(width: getResponsiveSize(context, 8)),
                       Text(
                         '${comments.length} comment${comments.length == 1 ? '' : 's'}',
-                        style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+                        style: TextStyle(
+                          color: Colors.white70, 
+                          fontSize: getResponsiveFontSize(context, baseSize: 14), 
+                          fontWeight: FontWeight.w500
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: getResponsiveSize(context, 12)),
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 200),
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.3,
+                  ),
                   child: SingleChildScrollView(
                     child: Column(
                       children: comments.take(10).map((c) => _buildComment(c, postId)).toList(),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: getResponsiveSize(context, 12)),
               ] else ...[
                 Container(
-                  padding: const EdgeInsets.all(16.0),
-                  margin: const EdgeInsets.all(8.0),
+                  padding: EdgeInsets.all(getResponsiveSize(context, 16)),
+                  margin: EdgeInsets.all(getResponsiveSize(context, 8)),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(getResponsiveSize(context, 8)),
                     border: Border.all(color: Colors.white.withOpacity(0.1)),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.chat_bubble_outline, color: Colors.white54, size: 20),
-                      SizedBox(width: 8),
-                      Text('No comments yet. Be the first to comment!', style: TextStyle(color: Colors.white54, fontSize: 14)),
+                      Icon(
+                        Icons.chat_bubble_outline, 
+                        color: Colors.white54, 
+                        size: getResponsiveSize(context, 20)
+                      ),
+                      SizedBox(width: getResponsiveSize(context, 8)),
+                      Text(
+                        'No comments yet. Be the first to comment!', 
+                        style: TextStyle(
+                          color: Colors.white54, 
+                          fontSize: getResponsiveFontSize(context, baseSize: 14)
+                        )
+                      ),
                     ],
                   ),
                 ),
@@ -606,98 +835,80 @@ class _CommunityScreenState extends State<CommunityScreen> {
       builder: (context, nameSnapshot) {
         final userName = nameSnapshot.data ?? 'User';
 
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (depth > 0)
-                  Container(
-                    width: 24,
-                    margin: const EdgeInsets.only(right: 8),
-                    child: CustomPaint(
-                      painter: IndentationLinePainter(),
-                    ),
-                  ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildAvatar(userName),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        userName,
-                                        style: const TextStyle(
-                                          color: AppColors.primary,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        '· $timestamp',
-                                        style: const TextStyle(
-                                          color: Colors.white54,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  comment['content'] ?? '',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ],
+        return Container(
+          margin: EdgeInsets.only(
+            bottom: getResponsiveSize(context, 12),
+            left: depth * getResponsiveSize(context, 12),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildAvatar(userName),
+              SizedBox(width: getResponsiveSize(context, 8)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            userName,
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: getResponsiveFontSize(context, baseSize: 14),
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          if (depth < maxDepth)
-                            IconButton(
-                              icon: const Icon(Icons.reply, size: 16),
-                              color: Colors.white70,
-                              onPressed: () => _showReplyDialog(postId, comment),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                minWidth: 24,
-                                minHeight: 24,
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      if (replies.isNotEmpty && depth < maxDepth)
-                        Column(
-                          children: replies
-                              .map((reply) => _buildComment(
-                                    reply,
-                                    postId,
-                                    depth: depth + 1,
-                                  ))
-                              .toList(),
                         ),
-                    ],
+                        SizedBox(width: getResponsiveSize(context, 8)),
+                        Text(
+                          '· $timestamp',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: getResponsiveFontSize(context, baseSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: getResponsiveSize(context, 4)),
+                    Text(
+                      comment['content'] ?? '',
+                      style: TextStyle(
+                        color: AppColors.textSecondary, // Changed to a light gray
+                        fontSize: getResponsiveFontSize(context, baseSize: 13),
+                        height: 1.4,
+                      ),
+                    ),
+                    if (replies.isNotEmpty && depth < maxDepth)
+                      Column(
+                        children: replies
+                            .map((reply) => _buildComment(
+                                  reply,
+                                  postId,
+                                  depth: depth + 1,
+                                ))
+                            .toList(),
+                      ),
+                  ],
+                ),
+              ),
+              if (depth < maxDepth)
+                IconButton(
+                  icon: Icon(
+                    Icons.reply, 
+                    size: getResponsiveSize(context, 16)
+                  ),
+                  color: Colors.white70,
+                  onPressed: () => _showReplyDialog(postId, comment),
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints(
+                    minWidth: getResponsiveSize(context, 32),
+                    minHeight: getResponsiveSize(context, 32),
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
         );
       },
@@ -720,17 +931,25 @@ class _CommunityScreenState extends State<CommunityScreen> {
           children: [
             _buildHeader(),
             Container(
-              height: 50,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              height: MediaQuery.of(context).size.height * 0.06,
+              padding: EdgeInsets.symmetric(
+                horizontal: getResponsivePadding(context),
+                vertical: getResponsiveSize(context, 8),
+              ),
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: _categories.length,
                 itemBuilder: (context, index) {
                   final category = _categories[index];
                   return Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: EdgeInsets.only(right: getResponsiveSize(context, 8)),
                     child: FilterChip(
-                      label: Text(category),
+                      label: Text(
+                        category,
+                        style: TextStyle(
+                          fontSize: getResponsiveFontSize(context, baseSize: 12),
+                        ),
+                      ),
                       selected: _selectedCategory == category,
                       onSelected: (selected) {
                         setState(() {
@@ -751,40 +970,59 @@ class _CommunityScreenState extends State<CommunityScreen> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refreshPosts,
-                child: FutureBuilder<List<Map<String, dynamic>>>(
+                child: FutureBuilder<List<PostModel>>(
                   future: postsFuture,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
+                      return Center(
                         child: CircularProgressIndicator(color: AppColors.primary),
                       );
                     }
 
                     if (snapshot.hasError) {
+                      if (snapshot.error.toString().contains('Not Found')) {
+                        return NotFoundScreen();
+                      }
                       return Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                            const SizedBox(height: 16),
+                            Icon(
+                              Icons.error_outline, 
+                              color: Colors.red, 
+                              size: getResponsiveSize(context, 48)
+                            ),
+                            SizedBox(height: getResponsiveSize(context, 16)),
                             Text(
                               'Error loading posts',
-                              style: TextStyle(color: Colors.white, fontSize: 16),
+                              style: TextStyle(
+                                color: Colors.white, 
+                                fontSize: getResponsiveFontSize(context, baseSize: 16)
+                              ),
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${snapshot.error}',
-                              style: TextStyle(color: Colors.white70, fontSize: 12),
-                              textAlign: TextAlign.center,
+                            SizedBox(height: getResponsiveSize(context, 8)),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: getResponsivePadding(context)),
+                              child: Text(
+                                '${snapshot.error}',
+                                style: TextStyle(
+                                  color: Colors.white70, 
+                                  fontSize: getResponsiveFontSize(context, baseSize: 12)
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
                             ),
-                            const SizedBox(height: 16),
+                            SizedBox(height: getResponsiveSize(context, 16)),
                             ElevatedButton(
                               onPressed: _refreshPosts,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.primary,
                                 foregroundColor: Colors.black,
                               ),
-                              child: const Text('Retry'),
+                              child: Text(
+                                'Retry',
+                                style: TextStyle(fontSize: getResponsiveFontSize(context, baseSize: 14)),
+                              ),
                             ),
                           ],
                         ),
@@ -793,20 +1031,30 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
                     final posts = snapshot.data ?? [];
                     if (posts.isEmpty) {
-                      return const Center(
+                      return Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.forum_outlined, size: 64, color: Colors.white54),
-                            SizedBox(height: 16),
+                            Icon(
+                              Icons.forum_outlined, 
+                              size: getResponsiveSize(context, 64), 
+                              color: Colors.white54
+                            ),
+                            SizedBox(height: getResponsiveSize(context, 16)),
                             Text(
                               'No posts yet',
-                              style: TextStyle(color: Colors.white54, fontSize: 16),
+                              style: TextStyle(
+                                color: Colors.white54, 
+                                fontSize: getResponsiveFontSize(context, baseSize: 16)
+                              ),
                             ),
-                            SizedBox(height: 8),
+                            SizedBox(height: getResponsiveSize(context, 8)),
                             Text(
                               'Be the first to share something!',
-                              style: TextStyle(color: Colors.white38, fontSize: 14),
+                              style: TextStyle(
+                                color: Colors.white38, 
+                                fontSize: getResponsiveFontSize(context, baseSize: 14)
+                              ),
                             ),
                           ],
                         ),
@@ -815,23 +1063,33 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
                     final filteredPosts = _selectedCategory == 'All'
                         ? posts
-                        : posts.where((post) => post['category'] == _selectedCategory).toList();
+                        : posts.where((post) => post.category == _selectedCategory).toList();
 
                     if (filteredPosts.isEmpty) {
                       return Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.filter_alt_outlined, size: 64, color: Colors.white54),
-                            const SizedBox(height: 16),
+                            Icon(
+                              Icons.filter_alt_outlined, 
+                              size: getResponsiveSize(context, 64), 
+                              color: Colors.white54
+                            ),
+                            SizedBox(height: getResponsiveSize(context, 16)),
                             Text(
                               'No posts in $_selectedCategory',
-                              style: const TextStyle(color: Colors.white54, fontSize: 16),
+                              style: TextStyle(
+                                color: Colors.white54, 
+                                fontSize: getResponsiveFontSize(context, baseSize: 16)
+                              ),
                             ),
-                            const SizedBox(height: 8),
-                            const Text(
+                            SizedBox(height: getResponsiveSize(context, 8)),
+                            Text(
                               'Try selecting a different category',
-                              style: TextStyle(color: Colors.white38, fontSize: 14),
+                              style: TextStyle(
+                                color: Colors.white38, 
+                                fontSize: getResponsiveFontSize(context, baseSize: 14)
+                              ),
                             ),
                           ],
                         ),
@@ -839,41 +1097,45 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     }
 
                     return ListView.builder(
-                      padding: const EdgeInsets.all(16),
+                      padding: EdgeInsets.all(getResponsivePadding(context)),
                       itemCount: filteredPosts.length,
                       itemBuilder: (context, index) {
                         final post = filteredPosts[index];
-                        final postId = post['id'];
-                        final authorId = post['user_id'] ?? 'Anonymous';
-                        final content = post['content'] ?? '';
-                        final mediaUrl = post['media_url'];
+                        final postId = post.id;
+                        final authorId = post.authorId;
+                        final content = post.content;
+                        final mediaUrl = post.mediaUrl;
                         final fullMediaUrl = MediaUtils.getFullMediaUrl(mediaUrl);
                         final isVideo = MediaUtils.isVideo(mediaUrl);
-                        final likes = post['likes'] ?? 0;
-                        final timestamp = post['created_at'] != null
-                            ? timeago.format(DateTime.parse(post['created_at']))
+                        final likes = post.likes;
+                        final timestamp = post.createdAt != null
+                            ? timeago.format(post.createdAt)
                             : "";
 
                         return Card(
                           color: AppColors.navBar,
-                          margin: const EdgeInsets.only(bottom: 20),
+                          margin: EdgeInsets.only(bottom: getResponsiveSize(context, 20)),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           elevation: 4,
                           child: Column(
                             children: [
                               Padding(
-                                padding: const EdgeInsets.all(16),
+                                padding: EdgeInsets.all(getResponsivePadding(context)),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
                                       children: [
                                         CircleAvatar(
-                                          radius: 20,
+                                          radius: getResponsiveSize(context, 20),
                                           backgroundColor: AppColors.primary.withOpacity(0.2),
-                                          child: const Icon(Icons.person, color: AppColors.primary, size: 20),
+                                          child: Icon(
+                                            Icons.person, 
+                                            color: AppColors.primary, 
+                                            size: getResponsiveSize(context, 20)
+                                          ),
                                         ),
-                                        const SizedBox(width: 12),
+                                        SizedBox(width: getResponsiveSize(context, 12)),
                                         Expanded(
                                           child: GestureDetector(
                                             onTap: () => _showUserProfile(authorId),
@@ -885,17 +1147,20 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                                   builder: (context, nameSnapshot) {
                                                     return Text(
                                                       nameSnapshot.data ?? 'User',
-                                                      style: const TextStyle(
+                                                      style: TextStyle(
                                                         color: AppColors.primary,
                                                         fontWeight: FontWeight.bold,
-                                                        fontSize: 16,
+                                                        fontSize: getResponsiveFontSize(context, baseSize: 16),
                                                       ),
                                                     );
                                                   },
                                                 ),
                                                 Text(
                                                   timestamp,
-                                                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                                                  style: TextStyle(
+                                                    color: Colors.white60, 
+                                                    fontSize: getResponsiveFontSize(context, baseSize: 12)
+                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -904,53 +1169,66 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                         _buildPostMenu(authorId, content),
                                       ],
                                     ),
-                                    const SizedBox(height: 16),
+                                    SizedBox(height: MediaQuery.of(context).size.height * 0.01),
                                     if (content.isNotEmpty)
                                       Text(
                                         content,
-                                        style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
+                                        style: TextStyle(
+                                          color: Colors.white, 
+                                          fontSize: getResponsiveFontSize(context, baseSize: 15), 
+                                          height: 1.4
+                                        ),
                                       ),
                                     if (mediaUrl != null && mediaUrl.isNotEmpty)
                                       Container(
-                                        margin: const EdgeInsets.only(top: 12),
+                                        margin: EdgeInsets.only(top: getResponsiveSize(context, 12)),
                                         decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(getResponsiveSize(context, 12)),
                                           boxShadow: [
                                             BoxShadow(
                                               color: Colors.black.withOpacity(0.3),
                                               blurRadius: 8,
-                                              offset: const Offset(0, 4),
+                                              offset: Offset(0, 4),
                                             ),
                                           ],
                                         ),
                                         child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(getResponsiveSize(context, 12)),
                                           child: isVideo
                                               ? VideoPostWidget(videoUrl: fullMediaUrl)
                                               : Image.network(
                                                   fullMediaUrl,
                                                   fit: BoxFit.cover,
                                                   width: double.infinity,
-                                                  height: 200,
+                                                  height: MediaQuery.of(context).size.height * 0.25,
                                                   loadingBuilder: (context, child, loadingProgress) {
                                                     if (loadingProgress == null) return child;
                                                     return Container(
-                                                      height: 200,
+                                                      height: MediaQuery.of(context).size.height * 0.25,
                                                       color: Colors.grey[800],
-                                                      child: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                                                      child: Center(
+                                                        child: CircularProgressIndicator(color: AppColors.primary)
+                                                      ),
                                                     );
                                                   },
                                                   errorBuilder: (context, error, stackTrace) {
                                                     return Container(
-                                                      height: 200,
+                                                      height: MediaQuery.of(context).size.height * 0.25,
                                                       color: Colors.grey[800],
-                                                      child: const Center(
+                                                      child: Center(
                                                         child: Column(
                                                           mainAxisAlignment: MainAxisAlignment.center,
                                                           children: [
-                                                            Icon(Icons.broken_image, color: Colors.white54, size: 48),
-                                                            SizedBox(height: 8),
-                                                            Text('Failed to load image', style: TextStyle(color: Colors.white54)),
+                                                            Icon(
+                                                              Icons.broken_image, 
+                                                              color: Colors.white54, 
+                                                              size: getResponsiveSize(context, 48)
+                                                            ),
+                                                            SizedBox(height: getResponsiveSize(context, 8)),
+                                                            Text(
+                                                              'Failed to load image', 
+                                                              style: TextStyle(color: Colors.white54)
+                                                            ),
                                                           ],
                                                         ),
                                                       ),
@@ -959,31 +1237,26 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                                 ),
                                         ),
                                       ),
-                                    const SizedBox(height: 16),
-                                    Row(
+                                    SizedBox(height: getResponsiveSize(context, 16)),
+                                    Wrap(
+                                      spacing: getResponsiveSize(context, 8),
+                                      runSpacing: getResponsiveSize(context, 8),
                                       children: [
-                                        Flexible(
-                                          child: _ActionButton(
-                                            icon: Icons.thumb_up_alt_outlined,
-                                            label: '$likes',
-                                            onPressed: () => _likePost(postId),
-                                          ),
+                                        _ActionButton(
+                                          icon: Icons.thumb_up_alt_outlined,
+                                          label: '$likes',
+                                          onPressed: () => _likePost(postId),
                                         ),
-                                        Flexible(
-                                          child: _ActionButton(
-                                            icon: Icons.bookmark_outline,
-                                            label: 'Save',
-                                            onPressed: () => _savePost(postId),
-                                          ),
+                                        _ActionButton(
+                                          icon: Icons.bookmark_outline,
+                                          label: 'Save',
+                                          onPressed: () => _savePost(postId),
                                         ),
-                                        Flexible(
-                                          child: _ActionButton(
-                                            icon: Icons.comment_outlined,
-                                            label: 'Comment',
-                                            onPressed: () {},
-                                          ),
+                                        _ActionButton(
+                                          icon: Icons.comment_outlined,
+                                          label: 'Comment',
+                                          onPressed: () {},
                                         ),
-                                        const Spacer(),
                                         _ActionButton(
                                           icon: Icons.share_outlined,
                                           label: 'Share',
@@ -994,7 +1267,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                   ],
                                 ),
                               ),
-                              const Divider(color: Colors.white24, height: 1),
+                              Divider(color: Colors.white24, height: 1),
                               _buildCommentsSection(postId),
                             ],
                           ),
@@ -1054,11 +1327,22 @@ class _CommentInputFieldState extends State<_CommentInputField> {
 
   @override
   Widget build(BuildContext context) {
+    double getResponsiveSize(double baseSize) {
+      final screenWidth = MediaQuery.of(context).size.width;
+      if (screenWidth < 360) return baseSize * 0.8;
+      if (screenWidth < 400) return baseSize * 0.9;
+      if (screenWidth < 500) return baseSize;
+      return baseSize * 1.1;
+    }
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(
+        horizontal: MediaQuery.of(context).size.width * 0.04,
+        vertical: getResponsiveSize(8),
+      ),
       decoration: BoxDecoration(
         color: AppColors.background,
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(getResponsiveSize(30)),
         border: Border.all(color: AppColors.primary.withOpacity(0.5), width: 1),
       ),
       child: Row(
@@ -1067,28 +1351,45 @@ class _CommentInputFieldState extends State<_CommentInputField> {
             child: TextField(
               controller: _controller,
               focusNode: _focusNode,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(
+                color: Colors.white, 
+                fontSize: getResponsiveSize(14)
+              ),
               maxLines: null,
               textInputAction: TextInputAction.send,
               onSubmitted: _handleSubmitted,
               decoration: InputDecoration(
                 hintText: widget.placeholder ?? "Write a comment...",
-                hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
+                hintStyle: TextStyle(
+                  color: Colors.white54, 
+                  fontSize: getResponsiveSize(14)
+                ),
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+                contentPadding: EdgeInsets.symmetric(
+                  vertical: getResponsiveSize(8), 
+                  horizontal: 0
+                ),
+                filled: true, // Explicitly fill the background
+                fillColor: AppColors.inputField, // Use a dark input field color
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: getResponsiveSize(8)),
           AnimatedScale(
-            duration: const Duration(milliseconds: 200),
+            duration: Duration(milliseconds: 200),
             scale: _isComposing ? 1.0 : 0.0,
             child: IconButton(
-              icon: const Icon(Icons.send, color: AppColors.primary, size: 20),
+              icon: Icon(
+                Icons.send, 
+                color: AppColors.primary, 
+                size: getResponsiveSize(20)
+              ),
               onPressed: () => _handleSubmitted(_controller.text),
               style: IconButton.styleFrom(
                 backgroundColor: AppColors.primary.withOpacity(0.2),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(getResponsiveSize(20)),
+                ),
               ),
             ),
           ),
@@ -1146,7 +1447,7 @@ class _VideoPostWidgetState extends State<VideoPostWidget> {
       _controller!.addListener(_onVideoStateChanged);
 
       await _controller!.initialize().timeout(
-        const Duration(seconds: 30),
+        Duration(seconds: 30),
         onTimeout: () {
           throw TimeoutException('Video initialization timeout');
         },
@@ -1225,34 +1526,52 @@ class _VideoPostWidgetState extends State<VideoPostWidget> {
 
   @override
   Widget build(BuildContext context) {
+    double getResponsiveSize(double baseSize) {
+      final screenWidth = MediaQuery.of(context).size.width;
+      if (screenWidth < 360) return baseSize * 0.8;
+      if (screenWidth < 400) return baseSize * 0.9;
+      if (screenWidth < 500) return baseSize;
+      return baseSize * 1.1;
+    }
+
     if (_hasError) {
       return Container(
-        height: 200,
+        height: MediaQuery.of(context).size.height * 0.25,
         decoration: BoxDecoration(
           color: Colors.grey[800],
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(getResponsiveSize(12)),
         ),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, color: Colors.white54, size: 48),
-              const SizedBox(height: 8),
-              Text(
-                _errorMessage,
-                style: const TextStyle(color: Colors.white54, fontSize: 14),
-                textAlign: TextAlign.center,
+              Icon(
+                Icons.error_outline, 
+                color: Colors.white54, 
+                size: getResponsiveSize(48)
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: getResponsiveSize(8)),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: getResponsiveSize(16)),
+                child: Text(
+                  _errorMessage,
+                  style: TextStyle(
+                    color: Colors.white54, 
+                    fontSize: getResponsiveSize(14)
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              SizedBox(height: getResponsiveSize(12)),
               ElevatedButton.icon(
                 onPressed: _retryVideo,
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Retry'),
+                icon: Icon(Icons.refresh, size: getResponsiveSize(16)),
+                label: Text('Retry'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(getResponsiveSize(20)),
                   ),
                 ),
               ),
@@ -1264,20 +1583,23 @@ class _VideoPostWidgetState extends State<VideoPostWidget> {
 
     if (_isInitializing) {
       return Container(
-        height: 200,
+        height: MediaQuery.of(context).size.height * 0.25,
         decoration: BoxDecoration(
           color: Colors.grey[800],
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(getResponsiveSize(12)),
         ),
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               CircularProgressIndicator(color: AppColors.primary),
-              SizedBox(height: 12),
+              SizedBox(height: getResponsiveSize(12)),
               Text(
                 'Loading video...',
-                style: TextStyle(color: Colors.white54, fontSize: 14),
+                style: TextStyle(
+                  color: Colors.white54, 
+                  fontSize: getResponsiveSize(14)
+                ),
               ),
             ],
           ),
@@ -1287,12 +1609,12 @@ class _VideoPostWidgetState extends State<VideoPostWidget> {
 
     if (_controller == null || !_controller!.value.isInitialized) {
       return Container(
-        height: 200,
+        height: MediaQuery.of(context).size.height * 0.25,
         decoration: BoxDecoration(
           color: Colors.grey[800],
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(getResponsiveSize(12)),
         ),
-        child: const Center(
+        child: Center(
           child: Text(
             'Video not ready',
             style: TextStyle(color: Colors.white54),
@@ -1316,17 +1638,17 @@ class _VideoPostWidgetState extends State<VideoPostWidget> {
       },
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(getResponsiveSize(12)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.3),
               blurRadius: 8,
-              offset: const Offset(0, 4),
+              offset: Offset(0, 4),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(getResponsiveSize(12)),
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -1336,25 +1658,25 @@ class _VideoPostWidgetState extends State<VideoPostWidget> {
               ),
               if (!_isPlaying)
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(getResponsiveSize(12)),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.6),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.play_arrow,
                     color: Colors.white,
-                    size: 48,
+                    size: getResponsiveSize(48),
                   ),
                 ),
               Positioned(
-                bottom: 8,
-                left: 8,
-                right: 8,
+                bottom: getResponsiveSize(8),
+                left: getResponsiveSize(8),
+                right: getResponsiveSize(8),
                 child: VideoProgressIndicator(
                   _controller!,
                   allowScrubbing: true,
-                  colors: const VideoProgressColors(
+                  colors: VideoProgressColors(
                     playedColor: AppColors.primary,
                     bufferedColor: Colors.white54,
                     backgroundColor: Colors.white24,
@@ -1378,44 +1700,47 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    double getResponsiveSize(double baseSize) {
+      final screenWidth = MediaQuery.of(context).size.width;
+      if (screenWidth < 360) return baseSize * 0.8;
+      if (screenWidth < 400) return baseSize * 0.9;
+      if (screenWidth < 500) return baseSize;
+      return baseSize * 1.1;
+    }
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(getResponsiveSize(8)),
         splashColor: AppColors.primary.withOpacity(0.2),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: getResponsiveSize(8), 
+            vertical: getResponsiveSize(8)
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: AppColors.primary, size: 20),
-              const SizedBox(width: 6),
-              Text(label, style: const TextStyle(color: Colors.white, fontSize: 14)),
+              Icon(
+                icon, 
+                color: AppColors.primary, 
+                size: getResponsiveSize(20)
+              ),
+              SizedBox(width: getResponsiveSize(6)),
+              Text(
+                label, 
+                style: TextStyle(
+                  color: Colors.white, 
+                  fontSize: getResponsiveSize(14)
+                )
+              ),
             ],
           ),
         ),
       ),
     );
   }
-}
-
-class IndentationLinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.2)
-      ..strokeWidth = 1.5;
-
-    canvas.drawLine(
-      Offset(size.width / 2, 0),
-      Offset(size.width / 2, size.height),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
 Widget _buildAvatar(String name) {
@@ -1437,7 +1762,7 @@ Widget _buildAvatar(String name) {
     child: Center(
       child: Text(
         initial,
-        style: const TextStyle(
+        style: TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.bold,
           fontSize: 14,

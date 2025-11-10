@@ -8,7 +8,7 @@ class Post {
       
       const { rows } = await pool.query(
         'INSERT INTO posts (user_id, content, type, media_url) VALUES ($1, $2, $3, $4) RETURNING *',
-        [data.user_id, data.content, data.type, data.media_url]
+        [data.uid, data.content, data.type, data.media_url]
       );
       
       console.log('✅ Database: Post created successfully:', rows[0]);
@@ -63,6 +63,23 @@ class Post {
         detail: error.detail,
         hint: error.hint
       });
+      throw error;
+    }
+  }
+
+  static async findById(id) {
+    try {
+      console.log('🗄️ Database: Fetching post with id:', id);
+      
+      const { rows } = await pool.query(
+        'SELECT * FROM posts WHERE id = $1',
+        [id]
+      );
+      
+      console.log('✅ Database: Fetched post:', rows[0]);
+      return rows[0];
+    } catch (error) {
+      console.error('❌ Database: Error fetching post by id:', error);
       throw error;
     }
   }
